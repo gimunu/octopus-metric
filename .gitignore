@@ -1,5 +1,11 @@
-# umbe builddir
+
+# umbe stuff
 /serial
+.tm_properties
+
+# hannes stuff
+/mybuild
+
 
 # autotools 
 
@@ -11,3 +17,5 @@
 /install-sh
 /missing
 /stamp-h1
+/build-aux
+*.in
