@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: states.F90 14725 2015-10-31 21:42:32Z xavier $
+!! $Id: states.F90 14739 2015-11-05 18:09:17Z xavier $
 
 #include "global.h"
 
@@ -1152,6 +1152,7 @@ contains
     SAFE_ALLOCATE(st%group%block_node(1:st%group%nblocks))
 
     ASSERT(associated(st%node))
+    ASSERT(all(st%node >= 0) .and. all(st%node < st%mpi_grp%size))
     
     do ib = 1, st%group%nblocks
       st%group%block_node(ib) = st%node(st%group%block_range(ib, 1))

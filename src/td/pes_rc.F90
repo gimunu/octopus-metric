@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: pes_rc.F90 14681 2015-10-21 15:27:32Z umberto $
+!! $Id: pes_rc.F90 14738 2015-11-05 11:11:11Z philipp $
 
 #include "global.h"
 
@@ -53,8 +53,7 @@ module pes_rc_m
   type PES_rc_t
     integer                    :: npoints                   !< how many points we store the wf
     integer, pointer           :: points(:)                 !< which points to use (local index)
-    integer, pointer           :: points_global(:)          !< global index of the points
-    FLOAT, pointer             :: coords(:,:)               !< coordinates of the sample points
+    FLOAT, pointer             :: rcoords(:,:)              !< coordinates of the sample points
     CMPLX, pointer             :: wf(:,:,:,:,:)   => NULL() !< wavefunctions at sample points
     integer, pointer           :: rankmin(:)                !< partition of the mesh containing the points
     FLOAT, pointer             :: dq(:,:)         => NULL() !< part 1 of Volkov phase (recipe phase) 
@@ -91,7 +90,7 @@ contains
     FLOAT         :: dmin
     integer       :: rankmin
     logical       :: fromblk
-    FLOAT         :: phi, theta, radius, default_radius
+    FLOAT         :: phi, theta, radius
     integer       :: iph, ith
 
     PUSH_SUB(PES_rc_init)
@@ -150,7 +149,7 @@ contains
     !%Description
     !% If PES_rc_OmegaMax > 0, the photoelectron spectrum is directly calculated during 
     !% time-propagation, evaluated by the PES_rc method. PES_rc_OmegaMax is then the maximum frequency 
-    !% (approximate kinetic energy) and PES_rc_DelOmega the spacing in frequency domain of the spectrum.
+    !% (approximate kinetic energy) and PES_rc_DeltaOmega the spacing in frequency domain of the spectrum.
     !%End
     call parse_variable('PES_rc_OmegaMax', units_to_atomic(units_inp%energy, M_ZERO), pesrc%omegamax)
     pesrc%onfly = .false.
@@ -161,20 +160,20 @@ contains
       call messages_print_var_value(stdout, "PES_rc_OmegaMax", pesrc%omegamax)
     end if
  
-    !%Variable PES_rc_DelOmega
+    !%Variable PES_rc_DeltaOmega
     !%Type float
     !%Section Time-Dependent::PhotoElectronSpectrum
     !%Description
     !% The spacing in frequency domain for the photoelectron spectrum (if PES_rc_OmegaMax > 0).
     !% By default is set to PES_rc_OmegaMax/500. 
     !%End
-    call parse_variable('PES_rc_DelOmega', units_to_atomic(units_inp%energy, pesrc%omegamax/CNST(500)), pesrc%delomega)
+    call parse_variable('PES_rc_DeltaOmega', units_to_atomic(units_inp%energy, pesrc%omegamax/CNST(500)), pesrc%delomega)
     if(pesrc%onfly) then
-      if(pesrc%delomega <= M_ZERO) call messages_input_error('PES_rc_DelOmega')
-      call messages_print_var_value(stdout, "PES_rc_DelOmega", pesrc%delomega)
+      if(pesrc%delomega <= M_ZERO) call messages_input_error('PES_rc_DeltaOmega')
+      call messages_print_var_value(stdout, "PES_rc_DeltaOmega", pesrc%delomega)
     end if
 
-    !%Variable PES_rc_ThetaSteps
+    !%Variable PES_rc_StepsThetaR
     !%Type integer
     !%Default 45
     !%Section Time-Dependent::PhotoElectronSpectrum
@@ -182,10 +181,10 @@ contains
     !% Number of steps in theta (0 <= theta <= pi) for the spherical grid (if no 
     !% PhotoElectronSpectrumPoints are given).
     !%End
-    call parse_variable('PES_rc_ThetaSteps', 45, pesrc%nstepstheta)
-    if(.not.fromblk .and. pesrc%nstepstheta < 0) call messages_input_error('PES_rc_ThetaSteps')
+    call parse_variable('PES_rc_StepsThetaR', 45, pesrc%nstepstheta)
+    if(.not.fromblk .and. pesrc%nstepstheta < 0) call messages_input_error('PES_rc_StepsThetaR')
 
-    !%Variable PES_rc_PhiSteps
+    !%Variable PES_rc_StepsPhiR
     !%Type integer
     !%Default 90
     !%Section Time-Dependent::PhotoElectronSpectrum
@@ -193,9 +192,9 @@ contains
     !% Number of steps in phi (0 <= phi <= 2 pi) for the spherical grid (if no
     !% PhotoElectronSpectrumPoints are given).
     !%End
-    call parse_variable('PES_rc_PhiSteps', 90, pesrc%nstepsphi)
+    call parse_variable('PES_rc_StepsPhiR', 90, pesrc%nstepsphi)
     if(.not.fromblk) then
-      if(pesrc%nstepsphi < 0)  call messages_input_error('PES_rc_PhiSteps')
+      if(pesrc%nstepsphi < 0)  call messages_input_error('PES_rc_StepsPhiR')
       if(pesrc%nstepsphi == 0) pesrc%nstepsphi = 1
     end if
 
@@ -207,21 +206,22 @@ contains
     !% are given).
     !%End
     if(.not.fromblk) then
-      select case(mesh%sb%box_shape)
-      case(PARALLELEPIPED)
-        default_radius = minval(mesh%sb%lsize(1:mesh%sb%dim))
-      case(SPHERE)
-        default_radius = mesh%sb%rsize
-      case default
-        message(1) = "Spherical grid not implemented for this box shape."
-        message(2) = "Specify sample points with block PhotoElectronSpectrumPoints."
-        call messages_fatal(2)
-      end select
-    end if
-    call parse_variable('PES_rc_Radius', default_radius, radius)
-    if(.not.fromblk) then
-      if(radius <= M_ZERO) call messages_input_error('PES_rc_Radius')
-      call messages_print_var_value(stdout, "PES_rc_Radius", radius)
+      if(parse_is_defined('PES_rc_Radius')) then
+        call parse_variable('PES_rc_Radius', M_ZERO, radius)
+        if(radius <= M_ZERO) call messages_input_error('PES_rc_Radius')
+        call messages_print_var_value(stdout, "PES_rc_Radius", radius)
+      else
+        select case(mesh%sb%box_shape)
+        case(PARALLELEPIPED)
+          radius = minval(mesh%sb%lsize(1:mesh%sb%dim))
+        case(SPHERE)
+          radius = mesh%sb%rsize
+        case default
+          message(1) = "Spherical grid not implemented for this box shape."
+          message(2) = "Specify sample points with block PhotoElectronSpectrumPoints."
+          call messages_fatal(2)
+        end select
+      end if
     end if
 
     if(fromblk) then
@@ -244,35 +244,33 @@ contains
         pesrc%nstepstheta   = 0
         pesrc%npoints  = pesrc%nstepsphi
 
-        call messages_print_var_value(stdout, "PES_rc_StepsPhi", pesrc%nstepsphi)
+        call messages_print_var_value(stdout, "PES_rc_StepsPhiR", pesrc%nstepsphi)
 
       case(3)
         pesrc%thetamin = M_ZERO
         if(pesrc%nstepstheta <= 1) pesrc%nstepsphi = 1
         pesrc%npoints  = pesrc%nstepsphi * (pesrc%nstepstheta - 1) + 2
 
-        call messages_print_var_value(stdout, "PES_rc_StepsPhi", pesrc%nstepsphi)
-        call messages_print_var_value(stdout, "PES_rc_StepsTheta", pesrc%nstepstheta)
+        call messages_print_var_value(stdout, "PES_rc_StepsPhiR", pesrc%nstepsphi)
+        call messages_print_var_value(stdout, "PES_rc_StepsThetaR", pesrc%nstepstheta)
 
       end select
     end if
 
     call messages_print_var_value(stdout, "Number of PhotoElectronSpectrumPoints", pesrc%npoints)
 
-    SAFE_ALLOCATE(pesrc%coords(1:mesh%sb%dim, 1:pesrc%npoints))
+    SAFE_ALLOCATE(pesrc%rcoords(1:mesh%sb%dim, 1:pesrc%npoints))
 
     if(fromblk) then
       SAFE_ALLOCATE(pesrc%points(1:pesrc%npoints))
-      SAFE_ALLOCATE(pesrc%points_global(1:pesrc%npoints))
       SAFE_ALLOCATE(pesrc%rankmin(1:pesrc%npoints))
-      pesrc%points_global = 0
 
       ! read points from input file
       do ip = 1, pesrc%npoints
         call parse_block_float(blk, ip - 1, 0, xx(1), units_inp%length)
         call parse_block_float(blk, ip - 1, 1, xx(2), units_inp%length)
         call parse_block_float(blk, ip - 1, 2, xx(3), units_inp%length)
-        pesrc%coords(1:mesh%sb%dim, ip) = xx(1:mesh%sb%dim)
+        pesrc%rcoords(1:mesh%sb%dim, ip) = xx(1:mesh%sb%dim)
       end do
       call parse_block_end(blk)
 
@@ -281,18 +279,8 @@ contains
 
       do ip = 1, pesrc%npoints
         ! nearest point
-        pesrc%points(ip)  = mesh_nearest_point(mesh, pesrc%coords(1:mesh%sb%dim, ip), dmin, rankmin)
+        pesrc%points(ip)  = mesh_nearest_point(mesh, pesrc%rcoords(1:mesh%sb%dim, ip), dmin, rankmin)
         pesrc%rankmin(ip) = rankmin
-
-        if(mesh%parallel_in_domains) then
-#if defined(HAVE_MPI)
-          if(mesh%mpi_grp%rank == rankmin) &
-            pesrc%points_global(ip) = mesh%vp%local(mesh%vp%xlocal + pesrc%points(ip) - 1)
-          call comm_allreduce(mesh%mpi_grp%comm, pesrc%points_global)
-#endif
-        else
-          pesrc%points_global(ip) = pesrc%points(ip)
-        end if
       end do
 
     else ! fromblk == .false.
@@ -315,9 +303,9 @@ contains
             phi = iph * M_TWO * M_PI / pesrc%nstepsphi
           end if
           ip = ip + 1
-                               pesrc%coords(1, ip) = radius * cos(phi) * sin(theta)
-          if(mesh%sb%dim >= 2) pesrc%coords(2, ip) = radius * sin(phi) * sin(theta)
-          if(mesh%sb%dim == 3) pesrc%coords(3, ip) = radius * cos(theta)
+                               pesrc%rcoords(1, ip) = radius * cos(phi) * sin(theta)
+          if(mesh%sb%dim >= 2) pesrc%rcoords(2, ip) = radius * sin(phi) * sin(theta)
+          if(mesh%sb%dim == 3) pesrc%rcoords(3, ip) = radius * cos(theta)
           if(theta == M_ZERO .or. theta == M_PI) exit
         end do
       end do
@@ -352,10 +340,9 @@ contains
     PUSH_SUB(PES_rc_end)
 
     SAFE_DEALLOCATE_P(pesrc%points)
-    SAFE_DEALLOCATE_P(pesrc%points_global)
     SAFE_DEALLOCATE_P(pesrc%wf)
     SAFE_DEALLOCATE_P(pesrc%rankmin)
-    SAFE_DEALLOCATE_P(pesrc%coords)
+    SAFE_DEALLOCATE_P(pesrc%rcoords)
 
     SAFE_DEALLOCATE_P(pesrc%wfft)
 
@@ -421,7 +408,7 @@ contains
           do idim = 1, dim
             call states_get_state(st, mesh, idim, ist, ik, psistate(1:mesh%np_part))
             call mesh_interpolation_evaluate(pesrc%interp, pesrc%npoints, psistate(1:mesh%np_part), &
-              pesrc%coords(1:mesh%sb%dim, 1:pesrc%npoints), interp_values(1:pesrc%npoints))
+              pesrc%rcoords(1:mesh%sb%dim, 1:pesrc%npoints), interp_values(1:pesrc%npoints))
             pesrc%wf(ist, idim, ik, :, ii) = interp_values(:)
           end do
         end do
@@ -663,7 +650,7 @@ contains
           write(filenr, '(i4.4)') ip
    
           iunit = io_open('td.general/'//'PES_rc.'//filenr//'.wavefunctions.out', action='write')
-          xx(1:mesh%sb%dim) = pesrc%coords(1:mesh%sb%dim, ip)
+          xx(1:mesh%sb%dim) = pesrc%rcoords(1:mesh%sb%dim, ip)
           write(iunit,'(a1)') '#'
           write(iunit, '(a7,f17.6,a1,f17.6,a1,f17.6,5a)') &
             '# R = (',xx(1),' ,',xx(2),' ,',xx(3), &
@@ -813,9 +800,9 @@ contains
     if(ii == 0) iprev = pesrc%save_iter - 1
 
     do ip = 1, pesrc%npoints
-      rr = sqrt(dot_product(pesrc%coords(1:dim, ip), pesrc%coords(1:dim, ip)))
+      rr = sqrt(dot_product(pesrc%rcoords(1:dim, ip), pesrc%rcoords(1:dim, ip)))
       pesrc%dq(ip, ii) = pesrc%dq(ip, iprev) &
-        + dot_product(pesrc%coords(1:dim, ip), vp(1:dim)) / (P_C * rr) * dt
+        + dot_product(pesrc%rcoords(1:dim, ip), vp(1:dim)) / (P_C * rr) * dt
     end do
 
     pesrc%domega(ii) = pesrc%domega(iprev) &

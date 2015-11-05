@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: pes.F90 14536 2015-09-05 17:44:52Z philipp $
+!! $Id: pes.F90 14737 2015-11-05 10:56:42Z philipp $
 
 #include "global.h"
 
@@ -78,7 +78,6 @@ contains
     !
     PUSH_SUB(pes_rc_nullify)
     this%points        =>null()
-    this%points_global =>null()
     this%wf            =>null()
     this%rankmin       =>null()
     POP_SUB(pes_rc_nullify)
