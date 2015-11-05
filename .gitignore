@@ -7,6 +7,9 @@
 /mybuild
 
 
+# svn 
+.svn
+
 # autotools 
 
 /autom4te.cache
