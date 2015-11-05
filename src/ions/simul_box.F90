@@ -622,7 +622,7 @@ contains
     FLOAT,   optional, intent(in)    :: rlattice_primitive(:,:)
 
     type(block_t) :: blk
-    FLOAT :: norm, cross(1:3)
+    FLOAT :: norm, cross(1:3), lparams(3)
     integer :: idim, jdim
 
     PUSH_SUB(simul_box_build_lattice)
@@ -630,6 +630,33 @@ contains
     if(present(rlattice_primitive)) then
       sb%rlattice_primitive(1:sb%dim, 1:sb%dim) = rlattice_primitive(1:sb%dim, 1:sb%dim)
     else
+      
+      
+      !%Variable LatticeParameters
+      !%Type block
+      !%Default 1 | 1 | 1
+      !%Section Mesh::Simulation Box
+      !%Description
+      !% The lattice parameters (a, b, c).
+      !%End
+      lparams(:) = M_ONE
+      
+      if (parse_block('LatticeParameters', blk) == 0) then
+        do idim = 1, sb%dim
+            call parse_block_float(blk, 0, idim - 1, lparams(idim))
+        end do
+        call parse_block_end(blk)
+      end if
+
+      sb%lsize(:) = lparams(:)/M_TWO
+
+      print *, lparams(:)
+      if (parse_is_defined('Lsize')) then
+        message(1) = 'LatticeParameters is incompatible with Lsize'
+        call messages_fatal(1)
+      end if
+      
+      
       !%Variable LatticeVectors
       !%Type block
       !%Default simple cubic
@@ -660,16 +687,15 @@ contains
         if(sb%nonorthogonal) &
           call messages_experimental('Non-orthogonal unit cells')
         
-! check if Lsize is defined, if not, then set it to a/2, b/2, c/2
-        if (.not. parse_is_defined('Lsize')) then  
-          sb%lsize(:) = M_ZERO
-          sb%lsize(1:sb%dim) = M_HALF
-	else
-	  message(1) = 'Lsize is being declared along with Lattice Vectors:'
-          message(2) = ' this will multiply each vector by the corresponding lsize'
-          message(3) = ' For the default behavior set lsize = 0.5 | 0.5 | 0.5 '
-	  call messages_warning(3)
-        end if
+!         ! check if Lsize is defined, if not, then set it to 1/2, 1/2, 1/2
+!         if (.not. parse_is_defined('Lsize')) then
+!           sb%lsize(:) = M_ZERO
+!           sb%lsize(1:sb%dim) = M_HALF
+!         else
+!           message(1) = 'Lsize is being declared along with Lattice Vectors:'
+!           message(2) = ' this will multiply each vector by the corresponding lsize'
+!           call messages_warning(3)
+!         end if
       end if
 
     end if
