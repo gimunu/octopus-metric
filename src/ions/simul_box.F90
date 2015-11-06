@@ -646,14 +646,18 @@ contains
             call parse_block_float(blk, 0, idim - 1, lparams(idim))
         end do
         call parse_block_end(blk)
+
+        print *, lparams(:)
+
+        if (parse_is_defined('Lsize')) then
+          message(1) = 'LatticeParameters is incompatible with Lsize'
+          call messages_fatal(1)
+        end if
+
       end if
 
-      sb%lsize(:) = lparams(:)/M_TWO
-
-      print *, lparams(:)
-      if (parse_is_defined('Lsize')) then
-        message(1) = 'LatticeParameters is incompatible with Lsize'
-        call messages_fatal(1)
+      if (.not. parse_is_defined('Lsize')) then
+        sb%lsize(:) = lparams(:)/M_TWO
       end if
       
       
