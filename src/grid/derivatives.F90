@@ -478,20 +478,40 @@ contains
       end do
 
     case(DER_CUBE) ! Laplacian and gradient have similar stencils
-      SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(1)%stencil%size))
-      SAFE_ALLOCATE(rhs(1:der%op(1)%stencil%size, 1:der%dim + 1))
-      call stencil_cube_polynomials_lapl(der%dim, der%order, polynomials)
+!       cSAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(1)%stencil%size))
+!       cSAFE_ALLOCATE(rhs(1:der%op(1)%stencil%size, 1:der%dim + 1))
+!       call stencil_cube_polynomials_lapl(der%dim, der%order, polynomials)
+!
+!       do i = 1, der%dim
+!         call get_rhs_grad(i, rhs(:,i))
+!       end do
+!       call get_rhs_lapl(rhs(:, der%dim+1))
+!
+!       name = "derivatives"
+!       call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, der%dim+1, der%op(:), name)
+!
+!       cSAFE_DEALLOCATE_A(polynomials)
+!       cSAFE_DEALLOCATE_A(rhs)
+        do i = 1, der%dim + 1
 
-      do i = 1, der%dim
-        call get_rhs_grad(i, rhs(:,i))
-      end do
-      call get_rhs_lapl(rhs(:, der%dim+1))
+          SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(1)%stencil%size))
+          SAFE_ALLOCATE(rhs(1:der%op(1)%stencil%size, 1:1))
+          call stencil_cube_polynomials_lapl(der%dim, der%order, polynomials)
 
-      name = "derivatives"
-      call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, der%dim+1, der%op(:), name)
+          if(i <= der%dim) then  ! gradient
+            call get_rhs_grad(i, rhs(:,1))
+            name = index2axis(i) // "-gradient"
+          else                      ! Laplacian
+            call get_rhs_lapl(rhs(:,1))
+            name = "Laplacian"
+          end if
 
-      SAFE_DEALLOCATE_A(polynomials)
-      SAFE_DEALLOCATE_A(rhs)
+          name = "derivatives"
+          call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, 1, der%op(i:i), name)
+
+          SAFE_DEALLOCATE_A(polynomials)
+          SAFE_DEALLOCATE_A(rhs)
+        end do
 
     case(DER_STARPLUS)
       do i = 1, der%dim
@@ -518,6 +538,9 @@ contains
       call stencil_variational_coeff_lapl(der%dim, der%order, mesh%spacing, der%lapl, alpha = der%lapl_cutoff)
 
     end select
+    
+!     call exit(1)
+    
 
     ! Here the Laplacian is forced to be self-adjoint, and the gradient to be skew-self-adjoint
     if(mesh%use_curvilinear .and. (.not. der%mesh%sb%mr_flag)) then
@@ -552,16 +575,29 @@ contains
 
       ! find right-hand side for operator
       rhs(:) = M_ZERO
-      do i = 1, der%dim
-        do j = 1, der%lapl%stencil%size
-          this_one = .true.
-          do k = 1, der%dim
-            if(k == i .and. polynomials(k, j) /= 2) this_one = .false.
-            if(k /= i .and. polynomials(k, j) /= 0) this_one = .false.
-          end do
-          if(this_one) rhs(j) = M_TWO
-        end do
+!       do i = 1, der%dim
+!         do j = 1, der%lapl%stencil%size
+!           this_one = .true.
+!           do k = 1, der%dim
+!             if(k == i .and. polynomials(k, j) /= 2) this_one = .false.
+!             if(k /= i .and. polynomials(k, j) /= 0) this_one = .false.
+!           end do
+!           if(this_one) rhs(j) = M_TWO
+!         end do
+!       end do
+
+      do j = 1, der%lapl%stencil%size
+        
+        if (all (polynomials(:, j) == (/2,0,0/))) rhs(j) = M_TWO * der%mesh%sb%metric(1,1)
+        if (all (polynomials(:, j) == (/0,2,0/))) rhs(j) = M_TWO * der%mesh%sb%metric(2,2)
+        if (all (polynomials(:, j) == (/0,0,2/))) rhs(j) = M_TWO * der%mesh%sb%metric(3,3)
+        if (all (polynomials(:, j) == (/1,1,0/))) rhs(j) = (der%mesh%sb%metric(1,2) + der%mesh%sb%metric(2,1))
+        if (all (polynomials(:, j) == (/1,0,1/))) rhs(j) = (der%mesh%sb%metric(1,3) + der%mesh%sb%metric(3,1))
+        if (all (polynomials(:, j) == (/0,1,1/))) rhs(j) = (der%mesh%sb%metric(2,3) + der%mesh%sb%metric(3,2))
+          
       end do
+      
+      
 
       POP_SUB(derivatives_build.get_rhs_lapl)
     end subroutine get_rhs_lapl
@@ -640,7 +676,7 @@ contains
         else
           forall(j = 1:dim) x(j) = real(op(1)%stencil%points(j, i), REAL_PRECISION)*mesh%spacing(j)
           ! TODO : this internal if clause is inefficient - the condition is determined globally
-          if (mesh%sb%nonorthogonal) x(1:dim) = matmul(mesh%sb%rlattice_primitive(1:dim,1:dim), x(1:dim))
+!           if (mesh%sb%nonorthogonal) x(1:dim) = matmul(mesh%sb%rlattice_primitive(1:dim,1:dim), x(1:dim))
         end if
 
 ! NB: these masses are applied on the cartesian directions. Should add a check for non-orthogonal axes
@@ -661,13 +697,24 @@ contains
             mat(j, i) = mat(j, i)*powers(k, pol(k, j))
           end do
         end do
+        print *, i, "x=", x(:)
       end do
 
       call lalg_linsyssolve(op(1)%stencil%size, n, mat, rhs, sol)
       do i = 1, n
         op(i)%w_re(:, p) = sol(:, n)
+        print *, i,"w=", op(i)%w_re(:, p)
       end do
+      
+      do i = 1, op(1)%stencil%size
+        do j = 1, n
+          print *, "x=",  op(1)%stencil%points(:, i),"nop",j, "w=", op(j)%w_re(i, p) 
+        end do
+      end do
+        
 
+
+      
     end do
     do i = 1, n
       call nl_operator_update_weights(op(i))
