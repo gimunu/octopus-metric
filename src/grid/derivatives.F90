@@ -52,6 +52,12 @@ module derivatives_m
   use utils_m
   use varinfo_m
 
+  use io_binary_m
+  use io_function_m
+  use io_m
+  use unit_m
+  use unit_system_m
+  
   implicit none
 
   private
@@ -428,6 +434,8 @@ contains
     logical :: const_w_, cmplx_op_
     character(len=32) :: name
     type(nl_operator_t) :: auxop
+    
+    type(test_parameters_t) :: test_param
 
     PUSH_SUB(derivatives_build)
 
@@ -478,20 +486,47 @@ contains
       end do
 
     case(DER_CUBE) ! Laplacian and gradient have similar stencils
-!       cSAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(1)%stencil%size))
-!       cSAFE_ALLOCATE(rhs(1:der%op(1)%stencil%size, 1:der%dim + 1))
-!       call stencil_cube_polynomials_lapl(der%dim, der%order, polynomials)
-!
-!       do i = 1, der%dim
-!         call get_rhs_grad(i, rhs(:,i))
-!       end do
-!       call get_rhs_lapl(rhs(:, der%dim+1))
-!
-!       name = "derivatives"
-!       call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, der%dim+1, der%op(:), name)
-!
-!       cSAFE_DEALLOCATE_A(polynomials)
-!       cSAFE_DEALLOCATE_A(rhs)
+    if (.true.) then
+      SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(1)%stencil%size))
+      SAFE_ALLOCATE(rhs(1:der%op(1)%stencil%size, 1:der%dim + 1))
+      call stencil_cube_polynomials_lapl(der%dim, der%order, polynomials)
+
+      do i = 1, der%dim
+        call get_rhs_grad(i, rhs(:,i))
+      end do
+      call get_rhs_lapl(rhs(:, der%dim+1))
+
+      name = "derivatives"
+      call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, der%dim+1, der%op(:), name)
+
+      SAFE_DEALLOCATE_A(polynomials)
+      SAFE_DEALLOCATE_A(rhs)
+    else 
+        print *, "rlattice"
+        do i =1,   der%dim 
+          print *, der%mesh%sb%rlattice(1:der%dim,i)
+        end do
+
+        print *, "rlattice_primitive"
+        do i =1,   der%dim 
+          print *, der%mesh%sb%rlattice_primitive(1:der%dim,i)
+        end do
+
+        print *, "klattice"
+        do i =1,   der%dim 
+          print *, der%mesh%sb%klattice(1:der%dim,i)
+        end do
+
+        print *, "klattice_primitive"
+        do i =1,   der%dim 
+          print *, der%mesh%sb%klattice_primitive(1:der%dim,i)
+        end do
+
+        print *, "metric"
+        do i =1,   der%dim 
+          print *, der%mesh%sb%metric(1:der%dim,i)
+        end do
+
         do i = 1, der%dim + 1
 
           SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(1)%stencil%size))
@@ -512,6 +547,7 @@ contains
           SAFE_DEALLOCATE_A(polynomials)
           SAFE_DEALLOCATE_A(rhs)
         end do
+      end if
 
     case(DER_STARPLUS)
       do i = 1, der%dim
@@ -539,7 +575,6 @@ contains
 
     end select
     
-!     call exit(1)
     
 
     ! Here the Laplacian is forced to be self-adjoint, and the gradient to be skew-self-adjoint
@@ -559,6 +594,15 @@ contains
       call nl_operator_copy(der%lapl, auxop)
       call nl_operator_end(auxop)
     end if
+
+
+!     test_param%repetitions = 1
+!     test_param%min_blocksize = 1
+!     test_param%max_blocksize = 1
+!
+!     call dderivatives_test(der, test_param)
+!     call exit(1)
+
 
     POP_SUB(derivatives_build)
 
@@ -586,17 +630,47 @@ contains
 !         end do
 !       end do
 
-      do j = 1, der%lapl%stencil%size
+      select case( der%dim)
+      case (1)
+        do j = 1, der%lapl%stencil%size
+          if (polynomials(1, j) == 2) rhs(j) = M_TWO * der%mesh%sb%metric(1,1)
+        end do
+
+!       case (2)
+!         do j = 1, der%lapl%stencil%size
+!
+!           if (all (polynomials(1:2, j) == (/2,0/))) rhs(j) = M_TWO * der%mesh%sb%metric(1,1)
+!           if (all (polynomials(1:2, j) == (/0,2/))) rhs(j) = M_TWO * der%mesh%sb%metric(2,2)
+!           if (all (polynomials(1:2, j) == (/1,1/))) rhs(j) = (der%mesh%sb%metric(1,2) + der%mesh%sb%metric(2,1))
+!
+!         end do
         
-        if (all (polynomials(:, j) == (/2,0,0/))) rhs(j) = M_TWO * der%mesh%sb%metric(1,1)
-        if (all (polynomials(:, j) == (/0,2,0/))) rhs(j) = M_TWO * der%mesh%sb%metric(2,2)
-        if (all (polynomials(:, j) == (/0,0,2/))) rhs(j) = M_TWO * der%mesh%sb%metric(3,3)
-        if (all (polynomials(:, j) == (/1,1,0/))) rhs(j) = (der%mesh%sb%metric(1,2) + der%mesh%sb%metric(2,1))
-        if (all (polynomials(:, j) == (/1,0,1/))) rhs(j) = (der%mesh%sb%metric(1,3) + der%mesh%sb%metric(3,1))
-        if (all (polynomials(:, j) == (/0,1,1/))) rhs(j) = (der%mesh%sb%metric(2,3) + der%mesh%sb%metric(3,2))
-          
-      end do
+!       case (3)
+!         do j = 1, der%lapl%stencil%size
+!
+!           if (all (polynomials(1:3, j) == (/2,0,0/))) rhs(j) = M_TWO * der%mesh%sb%metric(1,1)
+!           if (all (polynomials(1:3, j) == (/0,2,0/))) rhs(j) = M_TWO * der%mesh%sb%metric(2,2)
+!           if (all (polynomials(1:3, j) == (/0,0,2/))) rhs(j) = M_TWO * der%mesh%sb%metric(3,3)
+!           if (all (polynomials(1:3, j) == (/1,1,0/))) rhs(j) = (der%mesh%sb%metric(1,2) + der%mesh%sb%metric(2,1))
+!           if (all (polynomials(1:3, j) == (/1,0,1/))) rhs(j) = (der%mesh%sb%metric(1,3) + der%mesh%sb%metric(3,1))
+!           if (all (polynomials(1:3, j) == (/0,1,1/))) rhs(j) = (der%mesh%sb%metric(2,3) + der%mesh%sb%metric(3,2))
+!
+!         end do
+        
+      case default 
       
+        do i = 1, der%dim
+          do j = 1, der%lapl%stencil%size
+            this_one = .true.
+            do k = 1, der%dim
+              if(k == i .and. polynomials(k, j) /= 2) this_one = .false.
+              if(k /= i .and. polynomials(k, j) /= 0) this_one = .false.
+            end do
+            if(this_one) rhs(j) = M_TWO
+          end do
+        end do
+        
+      end select 
       
 
       POP_SUB(derivatives_build.get_rhs_lapl)
@@ -676,7 +750,7 @@ contains
         else
           forall(j = 1:dim) x(j) = real(op(1)%stencil%points(j, i), REAL_PRECISION)*mesh%spacing(j)
           ! TODO : this internal if clause is inefficient - the condition is determined globally
-!           if (mesh%sb%nonorthogonal) x(1:dim) = matmul(mesh%sb%rlattice_primitive(1:dim,1:dim), x(1:dim))
+          if (mesh%sb%nonorthogonal) x(1:dim) = matmul(mesh%sb%rlattice_primitive(1:dim,1:dim), x(1:dim))
         end if
 
 ! NB: these masses are applied on the cartesian directions. Should add a check for non-orthogonal axes
