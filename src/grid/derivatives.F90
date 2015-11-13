@@ -502,30 +502,30 @@ contains
       SAFE_DEALLOCATE_A(polynomials)
       SAFE_DEALLOCATE_A(rhs)
     else 
-        print *, "rlattice"
-        do i =1,   der%dim 
-          print *, der%mesh%sb%rlattice(1:der%dim,i)
-        end do
-
-        print *, "rlattice_primitive"
-        do i =1,   der%dim 
-          print *, der%mesh%sb%rlattice_primitive(1:der%dim,i)
-        end do
-
-        print *, "klattice"
-        do i =1,   der%dim 
-          print *, der%mesh%sb%klattice(1:der%dim,i)
-        end do
-
-        print *, "klattice_primitive"
-        do i =1,   der%dim 
-          print *, der%mesh%sb%klattice_primitive(1:der%dim,i)
-        end do
-
-        print *, "metric"
-        do i =1,   der%dim 
-          print *, der%mesh%sb%metric(1:der%dim,i)
-        end do
+!         print *, "rlattice"
+!         do i =1,   der%dim
+!           print *, der%mesh%sb%rlattice(1:der%dim,i)
+!         end do
+!
+!         print *, "rlattice_primitive"
+!         do i =1,   der%dim
+!           print *, der%mesh%sb%rlattice_primitive(1:der%dim,i)
+!         end do
+!
+!         print *, "klattice"
+!         do i =1,   der%dim
+!           print *, der%mesh%sb%klattice(1:der%dim,i)
+!         end do
+!
+!         print *, "klattice_primitive"
+!         do i =1,   der%dim
+!           print *, der%mesh%sb%klattice_primitive(1:der%dim,i)
+!         end do
+!
+!         print *, "metric"
+!         do i =1,   der%dim
+!           print *, der%mesh%sb%metric(1:der%dim,i)
+!         end do
 
         do i = 1, der%dim + 1
 
@@ -771,18 +771,15 @@ contains
             mat(j, i) = mat(j, i)*powers(k, pol(k, j))
           end do
         end do
-        print *, i, "x=", x(:)
       end do
 
       call lalg_linsyssolve(op(1)%stencil%size, n, mat, rhs, sol)
       do i = 1, n
         op(i)%w_re(:, p) = sol(:, n)
-        print *, i,"w=", op(i)%w_re(:, p)
       end do
       
       do i = 1, op(1)%stencil%size
         do j = 1, n
-          print *, "x=",  op(1)%stencil%points(:, i),"nop",j, "w=", op(j)%w_re(i, p) 
         end do
       end do
         
