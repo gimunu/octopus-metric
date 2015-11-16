@@ -10,6 +10,11 @@
 # svn 
 .svn
 
+#editors
+*~
+*.wp
+*.swo
+
 # autotools 
 
 /autom4te.cache
