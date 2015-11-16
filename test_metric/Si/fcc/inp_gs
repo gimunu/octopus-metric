@@ -1,0 +1,55 @@
+#######KPOITNS#######
+CalculationMode = gs
+ExperimentalFeatures = yes
+FromScratch = yes
+#DebugLevel = 1
+
+Dimensions = 3
+PeriodicDimensions = 3
+
+############
+# System
+############
+
+
+XCFunctional = none
+
+a = 10.2
+
+%Lsize
+  a/2. | a/2.| a/2.
+%
+
+
+%LatticeVectors
+ 0.  | 0.5 | 0.5
+ 0.5 | 0.  | 0.5
+ 0.5 | 0.5 | 0.0
+%
+
+#PseudopotentialSet=hgh_lda
+
+Spacing = 0.6
+
+%ReducedCoordinates
+ "Si" |   0.0       | 0.0      | 0.0      
+ "Si" |   1/4       | 1/4      | 1/4      
+%
+
+#LCAOStart = lcao_none
+DerivativesStencil = stencil_cube
+#DerivativesOrder = 11
+
+Extrastates = 2
+
+Output = dos + potential
+OutputFormat = axis_x + vtk
+
+
+%KPointsGrid
+  8 | 8 | 8
+  1/2 | 1/2 | 1/2
+%
+
+KPointsUseSymmetries = yes
+

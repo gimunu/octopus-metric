@@ -1,0 +1,56 @@
+#######KPOITNS#######
+CalculationMode = gs
+ExperimentalFeatures = yes
+FromScratch = yes
+#debuglevel = 2
+
+Dimensions = 3
+PeriodicDimensions = 3
+
+############
+# System
+############
+
+XCFunctional = none
+StatesPack = yes
+
+a = 10.2
+%Lsize
+  a/2. | a/2.| a/2.
+%
+
+Spacing = 0.4
+
+%LatticeVectors
+0.  | 0.5 | 0.5
+0.5 | 0.  | 0.5
+0.5 | 0.5 | 0.0
+%
+
+PseudopotentialSet = hgh_lda
+
+%ReducedCoordinates
+ "Si" | 0.  | 0.0 | 0.0
+%
+
+
+DerivativesStencil = stencil_cube
+#DerivativesOrder = 11
+
+SmearingFunction = fermi_dirac
+Smearing  = 0.001
+
+#Eigensolver = plan
+     
+Extrastates = 24
+
+Output = dos + potential+density + wfs
+OutputFormat = axis_x + vtk
+
+
+%KPointsGrid
+ 6 | 6 | 1
+%
+
+#KPointsUseSymmetries = yes
+

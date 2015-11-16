@@ -1,0 +1,48 @@
+#######KPOITNS#######
+CalculationMode = gs
+ExperimentalFeatures = yes
+FromScratch = yes
+
+Dimensions = 3
+PeriodicDimensions = 3
+
+############
+# System
+############
+XCFunctional = none
+
+a = 3.0
+%Lsize
+  a/2. | a/2.| a/2.
+%
+
+%LatticeVectors
+1. | 0. | 0.
+0. | 1. | 0.
+0. | 0. | 1.
+%
+
+
+Spacing = 0.22
+
+%ReducedCoordinates
+  "Si" | 0.  | 0.0 | 0.0
+  "Si" | 0.  | 0.5 | 0.5
+  "Si" | 0.5 | 0.  | 0.5
+  "Si" | 0.5 | 0.5 | 0.0
+%
+
+
+Extrastates = 24
+
+SmearingFunction = fermi_dirac
+Smearing  = 0.001
+Output = dos + potential+density + wfs 
+OutputFormat = axis_x + vtk
+
+
+%KPointsGrid
+ 6 | 6 | 6
+%
+
+KPointsUseSymmetries = yes
