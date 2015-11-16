@@ -1,0 +1,3 @@
+
+sed "s|gs|unocc|g" inp_gs > inp
+cat kpts >> inp
