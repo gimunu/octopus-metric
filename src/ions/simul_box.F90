@@ -660,6 +660,7 @@ contains
         sb%lsize(:) = lparams(:)/M_TWO
       end if
       
+!       print *, "***** sb%lsize(:)", sb%lsize(:)
       
       !%Variable LatticeVectors
       !%Type block
@@ -707,13 +708,15 @@ contains
     sb%rlattice = M_ZERO
     do idim = 1, sb%dim
       norm = sqrt(sum(sb%rlattice_primitive(1:sb%dim, idim)**2))
+      !Lsize should not depend on LatticeVectors
       sb%lsize(idim) = sb%lsize(idim) * norm
       forall(jdim = 1:sb%dim)
         sb%rlattice_primitive(jdim, idim) = sb%rlattice_primitive(jdim, idim) / norm
         sb%rlattice(jdim, idim) = sb%rlattice_primitive(jdim, idim) * M_TWO*sb%lsize(idim)
       end forall
     end do
-
+!     print *, "+++++++ sb%lsize(:)", sb%lsize(:)
+    
     select case(sb%dim)
     case(3)
       cross = dcross_product(sb%rlattice(:,2), sb%rlattice(:,3))
@@ -741,6 +744,8 @@ contains
     ! klattice_primitive is the B matrix, with no 2 pi factor included
     ! klattice is the proper reciprocal lattice vectors, with 2 pi factor, and in units of 1/bohr
     ! metric is the F matrix of Chelikowski
+
+!     print *, "------- sb%lsize(:)", sb%lsize(:)
 
     POP_SUB(simul_box_build_lattice)
   end subroutine simul_box_build_lattice
@@ -776,14 +781,17 @@ contains
       if (simul_box_is_periodic(sb)) then
         if(.not. geo%reduced_coordinates) then
           !convert the position to the orthogonal space
-          xx(1:pd) = matmul(geo%atom(iatom)%x(1:pd), sb%klattice_primitive(1:pd, 1:pd))
-! TODO : change to klattice not primitive, and remove line below
-          xx(1:pd) = xx(1:pd)/(M_TWO*sb%lsize(1:pd))
+!           xx(1:pd) = matmul(geo%atom(iatom)%x(1:pd), sb%klattice_primitive(1:pd, 1:pd))
+! ! TODO : change to klattice not primitive, and remove line below
+!           xx(1:pd) = xx(1:pd)/(M_TWO*sb%lsize(1:pd))
+          xx(1:pd) = matmul(geo%atom(iatom)%x(1:pd), sb%klattice(1:pd, 1:pd))
         else
           ! in this case coordinates are already in reduced space
           xx(1:pd) = geo%atom(iatom)%x(1:pd)
         end if
 
+!         print *, "before atom",iatom, "pos", xx(1:pd)
+        
         xx(1:pd) = xx(1:pd) + M_HALF
         do idir = 1, pd
           if(xx(idir) >= M_ZERO) then
@@ -792,13 +800,23 @@ contains
             xx(idir) = xx(idir) - aint(xx(idir)) + M_ONE
           end if
         end do
+
+!         print *, "before assert atom",iatom, "pos", xx(1:pd)
+!         print *, "sb%lsize(1:pd) ", sb%lsize(1:pd)
         ASSERT(all(xx(1:pd) >= M_ZERO))
 
         ASSERT(all(xx(1:pd) < CNST(1.0)))
-        xx(1:pd) = (xx(1:pd) - M_HALF)*M_TWO*sb%lsize(1:pd) 
-! TODO : change to rlattice not primitive, and remove line above
-        geo%atom(iatom)%x(1:pd) = matmul(sb%klattice_primitive(1:pd, 1:pd), xx(1:pd))
+!         xx(1:pd) = (xx(1:pd) - M_HALF)*M_TWO*sb%lsize(1:pd)
+! ! TODO : change to rlattice not primitive, and remove line above
+! !         geo%atom(iatom)%x(1:pd) = matmul(sb%klattice_primitive(1:pd, 1:pd), xx(1:pd))
+!         geo%atom(iatom)%x(1:pd) = matmul(sb%rlattice_primitive(1:pd, 1:pd), xx(1:pd))
 
+        xx(1:pd) = (xx(1:pd) - M_HALF)
+!         print *, "before metric atom",iatom, "pos", xx(1:pd)
+        geo%atom(iatom)%x(1:pd) = matmul(sb%rlattice(1:pd, 1:pd), xx(1:pd))
+
+!         print *, "atom",iatom, "pos", geo%atom(iatom)%x(1:pd)
+        
       end if
 
       if(geo%reduced_coordinates) then
