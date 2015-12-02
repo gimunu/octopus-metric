@@ -619,23 +619,23 @@ contains
 
       ! find right-hand side for operator
       rhs(:) = M_ZERO
-!       do i = 1, der%dim
-!         do j = 1, der%lapl%stencil%size
-!           this_one = .true.
-!           do k = 1, der%dim
-!             if(k == i .and. polynomials(k, j) /= 2) this_one = .false.
-!             if(k /= i .and. polynomials(k, j) /= 0) this_one = .false.
-!           end do
-!           if(this_one) rhs(j) = M_TWO
-!         end do
-!       end do
-
-      select case( der%dim)
-      case (1)
+      do i = 1, der%dim
         do j = 1, der%lapl%stencil%size
-          if (polynomials(1, j) == 2) rhs(j) = M_TWO * der%mesh%sb%metric(1,1)
+          this_one = .true.
+          do k = 1, der%dim
+            if(k == i .and. polynomials(k, j) /= 2) this_one = .false.
+            if(k /= i .and. polynomials(k, j) /= 0) this_one = .false.
+          end do
+          if(this_one) rhs(j) = M_TWO
         end do
+      end do
 
+!       select case( der%dim)
+!       case (1)
+!         do j = 1, der%lapl%stencil%size
+!           if (polynomials(1, j) == 2) rhs(j) = M_TWO * der%mesh%sb%metric(1,1)
+!         end do
+!
 !       case (2)
 !         do j = 1, der%lapl%stencil%size
 !
@@ -656,21 +656,21 @@ contains
 !           if (all (polynomials(1:3, j) == (/0,1,1/))) rhs(j) = (der%mesh%sb%metric(2,3) + der%mesh%sb%metric(3,2))
 !
 !         end do
-        
-      case default 
-      
-        do i = 1, der%dim
-          do j = 1, der%lapl%stencil%size
-            this_one = .true.
-            do k = 1, der%dim
-              if(k == i .and. polynomials(k, j) /= 2) this_one = .false.
-              if(k /= i .and. polynomials(k, j) /= 0) this_one = .false.
-            end do
-            if(this_one) rhs(j) = M_TWO
-          end do
-        end do
-        
-      end select 
+!
+!       case default
+!
+!         do i = 1, der%dim
+!           do j = 1, der%lapl%stencil%size
+!             this_one = .true.
+!             do k = 1, der%dim
+!               if(k == i .and. polynomials(k, j) /= 2) this_one = .false.
+!               if(k /= i .and. polynomials(k, j) /= 0) this_one = .false.
+!             end do
+!             if(this_one) rhs(j) = M_TWO
+!           end do
+!         end do
+!
+!       end select
       
 
       POP_SUB(derivatives_build.get_rhs_lapl)
@@ -777,12 +777,7 @@ contains
       do i = 1, n
         op(i)%w_re(:, p) = sol(:, n)
       end do
-      
-      do i = 1, op(1)%stencil%size
-        do j = 1, n
-        end do
-      end do
-        
+              
 
 
       
