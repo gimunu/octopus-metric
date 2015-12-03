@@ -839,14 +839,19 @@ contains
 
     pd = sb%periodic_dim
 
+!     print *,"ini cooridinates",ratom(1:pd)
+
     if (simul_box_is_periodic(sb)) then
       if(.not. geo%reduced_coordinates) then
         !convert the position to reduced coordinates
-        xx(1:pd) = matmul(ratom(1:pd), sb%klattice(1:pd, 1:pd))
+!         xx(1:pd) = matmul(ratom(1:pd), sb%klattice(1:pd, 1:pd))
+         xx(1:pd) = matmul(ratom(1:pd), sb%klattice_primitive(1:pd, 1:pd))
+         xx(1:pd) = xx(1:pd)/(M_TWO*sb%lsize(1:pd))
       else
         ! in this case coordinates are already in reduced space
         xx(1:pd) = ratom(1:pd)
       end if
+
 
       xx(1:pd) = xx(1:pd) + M_HALF
       do idir = 1, pd
@@ -859,8 +864,13 @@ contains
       ASSERT(all(xx(1:pd) >= M_ZERO))
       ASSERT(all(xx(1:pd) < CNST(1.0)))
 
-      xx(1:pd) = (xx(1:pd) - M_HALF)
-      ratom(1:pd) = matmul(sb%rlattice(1:pd, 1:pd), xx(1:pd))
+!       xx(1:pd) = (xx(1:pd) - M_HALF)
+!       ratom(1:pd) = matmul(sb%rlattice(1:pd, 1:pd), xx(1:pd))
+
+      xx(1:pd) = (xx(1:pd) - M_HALF)*M_TWO*sb%lsize(1:pd)
+      ratom(1:pd) = matmul(sb%rlattice_primitive(1:pd, 1:pd), xx(1:pd))
+
+!       print *,"fin cooridinates",ratom(1:pd)
 
     end if
     
