@@ -693,16 +693,6 @@ contains
           sb%lsize(1:sb%dim) = lparams(1:sb%dim)*M_HALF
         end if        
         
-!         ! check if Lsize is defined, if not, then set it to 1/2, 1/2, 1/2
-!         if (.not. parse_is_defined('Lsize')) then
-!           sb%lsize(:) = M_ZERO
-!           sb%lsize(1:sb%dim) = M_HALF
-!         else
-!           message(1) = 'Lsize is being declared along with Lattice Vectors:'
-!           message(2) = ' this will multiply each vector by the corresponding lsize'
-!           call messages_warning(3)
-!         end if
-
       end if
 
     end if
@@ -779,31 +769,6 @@ contains
 
       call simul_box_periodic_atom_in_box(sb, geo, geo%atom(iatom)%x(:))
 
-!       if (simul_box_is_periodic(sb)) then
-!
-!         if(.not. geo%reduced_coordinates) then
-!           xx(1:pd) = matmul(geo%atom(iatom)%x(1:pd), sb%klattice(1:pd, 1:pd))
-!         else
-!           xx(1:pd) = geo%atom(iatom)%x(1:pd)
-!         end if
-!
-!         xx(1:pd) = xx(1:pd) + M_HALF
-!         do idir = 1, pd
-!           if(xx(idir) >= M_ZERO) then
-!             xx(idir) = xx(idir) - aint(xx(idir))
-!           else
-!             xx(idir) = xx(idir) - aint(xx(idir)) + M_ONE
-!           end if
-!         end do
-!
-!         ASSERT(all(xx(1:pd) >= M_ZERO))
-!         ASSERT(all(xx(1:pd) < CNST(1.0)))
-!
-!         xx(1:pd) = (xx(1:pd) - M_HALF)
-!         geo%atom(iatom)%x(1:pd) = matmul(sb%rlattice(1:pd, 1:pd), xx(1:pd))
-!
-!       end if
-
       if(geo%reduced_coordinates) then
         geo%atom(iatom)%x(pd + 1:sb%dim) = M_TWO*sb%lsize(pd + 1:sb%dim)*geo%atom(iatom)%x(pd + 1:sb%dim)
       end if
@@ -846,6 +811,8 @@ contains
         !convert the position to reduced coordinates
 !         xx(1:pd) = matmul(ratom(1:pd), sb%klattice(1:pd, 1:pd))
          xx(1:pd) = matmul(ratom(1:pd), sb%klattice_primitive(1:pd, 1:pd))
+!TODO: change previous line to klattice (not prim) and remove next line
+! UDG: for some reason doing this breaks many tests 
          xx(1:pd) = xx(1:pd)/(M_TWO*sb%lsize(1:pd))
       else
         ! in this case coordinates are already in reduced space
@@ -866,8 +833,9 @@ contains
 
 !       xx(1:pd) = (xx(1:pd) - M_HALF)
 !       ratom(1:pd) = matmul(sb%rlattice(1:pd, 1:pd), xx(1:pd))
-
       xx(1:pd) = (xx(1:pd) - M_HALF)*M_TWO*sb%lsize(1:pd)
+!TODO: change next line to rlattice (not prim) and remove previous line
+! UDG: for some reason doing this breaks many tests 
       ratom(1:pd) = matmul(sb%rlattice_primitive(1:pd, 1:pd), xx(1:pd))
 
 !       print *,"fin cooridinates",ratom(1:pd)
