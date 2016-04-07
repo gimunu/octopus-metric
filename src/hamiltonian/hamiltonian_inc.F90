@@ -47,6 +47,8 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
   character(30) :: string, str2, str1
   FLOAT   :: xx(MAX_DIM), rr, ylm, ylm2
   
+  FLOAT  :: G(1:3)
+  
   call profiling_in(prof_hamiltonian, "HAMILTONIAN")
   PUSH_SUB(X(hamiltonian_apply_batch))
 
@@ -67,7 +69,9 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
   ! all terms are enabled by default
   terms_ = optional_default(terms, TERM_ALL)
 !   terms_ = TERM_NON_LOCAL_POTENTIAL + TERM_KINETIC + TERM_LOCAL_POTENTIAL
-!   terms_ =  TERM_KINETIC + TERM_LOCAL_POTENTIAL
+!   terms_ =  TERM_KINETIC !+ TERM_LOCAL_POTENTIAL
+!   terms_ =  TERM_LOCAL_POTENTIAL
+
 
   ASSERT(batch_is_ok(psib))
   ASSERT(batch_is_ok(hpsib))
@@ -104,56 +108,65 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
   bs = hardware%X(block_size)
 
 
-  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  
-!
-!    write (str1, '(I3)') ik
-!
-!     if(batch_is_packed(epsib)) then
-!
-!       print *, "Epsib packed!!", hpsib%nst_linear
-!         do ist = 1, hpsib%nst_linear
-!           if (.false.) then
-!             do sp = 1, der%mesh%np, bs
-!               do ip = sp, min(sp + bs - 1, der%mesh%np)
-!                 psib%pack%X(psi)(ist, ip) = &
-!                 R_TOTYPE(10.0)*exp(-R_TOTYPE(0.2)*sum(der%mesh%x(ip, 1:der%mesh%sb%dim)**2)) !+  R_TOTYPE(100.0)
-!                 call loct_ylm(1, der%mesh%x(ip,1), der%mesh%x(ip,2), der%mesh%x(ip,3), 0, 0, ylm)
-!                 call loct_ylm(1, der%mesh%x(ip,1), der%mesh%x(ip,2), der%mesh%x(ip,3), 1, -1, ylm2)
-!                 psib%pack%X(psi)(ist, ip) = psib%pack%X(psi)(ist, ip) * ( ylm2 + ylm)
-!               end do
-!             end do
-!           end if
-!
-!           write (str2, '(I3)') batch_linear_to_ist(hpsib, ist)
-!           string = "wfin-ik"//trim(adjustl(str1))//"-ist"//trim(adjustl(str2))
-!           call X(io_function_output)(io_function_fill_how("VTK"), &
-!                                       ".", string,  der%mesh, psib%pack%X(psi)(ist, :), unit_one, ierr)
-!         end do
-!
-!     else
-!       print *, "Epsib not packed!!"
-!
-!       if(.false.) then
-!         do sp = 1, der%mesh%np, bs
-!           do ii = 1, nst
-!             call set_pointers()
-!             do ip = sp, min(sp + bs - 1, der%mesh%np)
-!               epsi(ip) = R_TOTYPE(10.0)*exp(-R_TOTYPE(0.2)*sum(der%mesh%x(ip, 1:der%mesh%sb%dim)**2)) !+  R_TOTYPE(100.0)
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+   write (str1, '(I3)') ik
+
+    if(batch_is_packed(epsib)) then
+
+      print *, "Epsib packed!!", hpsib%nst_linear
+        do ist = 1, hpsib%nst_linear
+          if (.true.) then
+            do sp = 1, der%mesh%np, bs
+              do ip = sp, min(sp + bs - 1, der%mesh%np)
+                psib%pack%X(psi)(ist, ip) = &
+                R_TOTYPE(10.0)*exp(-R_TOTYPE(0.2)*sum(der%mesh%x(ip, 1:der%mesh%sb%dim)**2)) !+  R_TOTYPE(100.0)
+                call loct_ylm(1, der%mesh%x(ip,1), der%mesh%x(ip,2), der%mesh%x(ip,3), 0, 0, ylm)
+                call loct_ylm(1, der%mesh%x(ip,1), der%mesh%x(ip,2), der%mesh%x(ip,3), 1, -1, ylm2)
+                psib%pack%X(psi)(ist, ip) = psib%pack%X(psi)(ist, ip) * ( ylm2 + ylm)
+              end do
+            end do
+          end if
+
+          write (str2, '(I3)') batch_linear_to_ist(hpsib, ist)
+          string = "wfin-ik"//trim(adjustl(str1))//"-ist"//trim(adjustl(str2))
+          call X(io_function_output)(io_function_fill_how("VTK"), &
+                                      ".", string,  der%mesh, psib%pack%X(psi)(ist, :), unit_one, ierr)
+        end do
+
+    else
+      print *, "Epsib not packed!!"
+
+      if(.true.) then
+!         G(:) = matmul(der%mesh%sb%klattice, (/1,1,1/))
+        G(:) = matmul(der%mesh%sb%klattice, (/5,5,5/))
+        print *, "G= ", G(:)
+        do sp = 1, der%mesh%np, bs
+          do ii = 1, nst
+            call set_pointers()
+            do ip = sp, min(sp + bs - 1, der%mesh%np)
+              ! this is a gaussian times some ylm
+!               epsi(ip) = R_TOTYPE(10.0)*exp(-R_TOTYPE(0.2)*sum(der%mesh%x(ip, 1:der%mesh%sb%dim)**2))
 !               call loct_ylm(1, der%mesh%x(ip,1), der%mesh%x(ip,2), der%mesh%x(ip,3), 0, 0, ylm)
 !               call loct_ylm(1, der%mesh%x(ip,1), der%mesh%x(ip,2), der%mesh%x(ip,3), 1, -1, ylm2)
 !               epsi(ip) = epsi(ip)*( ylm2 + ylm)
-!             end do
-!           end do
-!         end do
-!       else
-!         ii = 1
-!         call set_pointers()
-!       end if
-! !       call dio_function_output(io_function_fill_how("VTK"), &
-! !                                   ".", string,  der%mesh, real(epsi, 8), unit_one, ierr)
-!     end if
-!
-!   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                
+                !Plane wave
+                epsi(ip) =  exp(M_ZI * ( dot_product(G, der%mesh%x(ip, 1:der%mesh%sb%dim))))
+                
+            end do
+          end do
+        end do
+      else
+        ii = 1
+        call set_pointers()
+      end if
+      string = "wfin-ik"//trim(adjustl(str1))//"-ist"!//trim(adjustl(str2))
+      call dio_function_output(io_function_fill_how("VTK"), &
+                                  ".", string,  der%mesh, real(epsi, 8), unit_one, ierr)
+    end if
+
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 
@@ -211,10 +224,10 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
   ! and the non-local one
   if (hm%ep%non_local .and. iand(TERM_NON_LOCAL_POTENTIAL, terms_) /= 0) then
     if(hm%hm_base%apply_projector_matrices) then
-!       print *, "matrices non-local!!"
+      print *, "matrices non-local!!"
       call X(hamiltonian_base_nlocal_finish)(hm%hm_base, der%mesh, hm%d, ik, projection, hpsib)
     else
-!       print *, "xavier non-local!!"
+      print *, "xavier non-local!!"
       ASSERT(.not. batch_is_packed(hpsib))
       call X(project_psi_batch)(der%mesh, hm%ep%proj, hm%ep%natoms, hm%d%dim, epsib, hpsib, ik)
     end if
@@ -337,6 +350,38 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
     end do
   end if
 
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    write (str1, '(I3)') ik
+
+
+      if(batch_is_packed(hpsib)) then
+        print *, "Hpsib packed!!"
+        do ist = 1, hpsib%nst_linear
+          write (str2, '(I3)') batch_linear_to_ist(hpsib, ist)
+          string = "wfout-ik"//trim(adjustl(str1))//"-ist"//trim(adjustl(str2))
+          call X(io_function_output)(io_function_fill_how("VTK"), &
+                                      ".", string,  der%mesh, hpsib%pack%X(psi)(ist, :), unit_one, ierr)
+        end do
+      else
+        print *, "Hpsib not packed!!"
+        do ii = 1, nst
+          write (str2, '(I3)') ii
+          string = "wfout-ik"//trim(adjustl(str1))//"-ist"//trim(adjustl(str2))
+          call set_pointers()
+          call dio_function_output(io_function_fill_how("VTK"), &
+                                      ".", string,  der%mesh, real(hpsi, 8), unit_one, ierr)
+        end do
+      end if
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!     batch_get_state(psib(last(ii))%batch, (/ist, idim/), gr%mesh%np, finalpsi)
+!     call dio_function_output(io_function_fill_how("VTK"), &
+!                                 ".", "lapl_wf",  this%mesh, real(opffb%states_linear(blocksize)%X(psi), 8), unit_one, ierr)
+
+  stop
+
+
   if(apply_phase) then
     call X(hamiltonian_phase)(hm, der, der%mesh%np, ik, .true., hpsib)
     if(batch_is_packed(epsib)) call batch_unpack(epsib, copy = .false.)
@@ -344,13 +389,18 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
     SAFE_DEALLOCATE_P(epsib)
   end if
 
+  
+
   if(pack) then
     call batch_unpack(psib, copy = .false.)
     call batch_unpack(hpsib)
   end if
 
+
+
   POP_SUB(X(hamiltonian_apply_batch))
   call profiling_out(prof_hamiltonian)
+
 
 contains
 
