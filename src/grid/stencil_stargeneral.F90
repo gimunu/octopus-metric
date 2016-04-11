@@ -23,6 +23,7 @@ module stencil_stargeneral_m
   use global_m
   use messages_m
   use profiling_m
+  use simul_box_m
   use stencil_m
 
   private
@@ -33,24 +34,113 @@ module stencil_stargeneral_m
     stencil_stargeneral_pol_lapl,  &
     stencil_stargeneral_size_grad, &
     stencil_stargeneral_get_grad,  &
-    stencil_stargeneral_pol_grad
+    stencil_stargeneral_pol_grad,  &
+    stencil_stargeneral_get_arms
+
 
 
 contains
+  
+  ! ---------------------------------------------------------
+  subroutine stencil_stargeneral_get_arms(this, sb)
+    type(stencil_t),     intent(inout) :: this 
+    type(simul_box_t),      intent(in) :: sb
+    
+    integer :: idim, dim
+    FLOAT   :: vec1(1:3), vec2(1:3), theta, arm(1:3)
+    
+    PUSH_SUB(stencil_stargeneral_get_arms)  
+    dim = sb%dim
+    
+    vec1(:) = M_ZERO
+    vec2(:) = M_ZERO
+    
+    this%stargeneral%narms = 0
+
+    if (dim == 1 ) then 
+      !we are done 
+      POP_SUB(stencil_stargeneral_get_arms)      
+      return 
+    end if   
+    
+    vec1(1:dim)=sb%rlattice_primitive(1, 1:dim)
+    vec2(1:dim)=sb%rlattice_primitive(2, 1:dim)
+    !get the angle between the primitive vectors
+    theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
+
+    if (theta < M_PI*M_HALF) then
+      this%stargeneral%narms = this%stargeneral%narms + 1
+      arm(1:3) = (/1,-1,0/)
+      this%stargeneral%arms(this%stargeneral%narms, 1:dim) = arm(1:dim)
+    else if(theta > M_PI*M_HALF) then
+      this%stargeneral%narms = this%stargeneral%narms + 1
+      arm(1:3) = (/1,+1,0/)
+      this%stargeneral%arms(this%stargeneral%narms, 1:dim) = arm(1:dim)
+    end if
+    !if theta == pi/2 we do not need additional arms
+    
+    if (dim == 2 ) then 
+      !we are done 
+      POP_SUB(stencil_stargeneral_get_arms)      
+      return 
+    end if   
+
+    ! We are already dim>2
+    
+    vec1(1:dim)=sb%rlattice_primitive(2,1:dim)
+    vec2(1:dim)=sb%rlattice_primitive(3,1:dim)
+    !get the angle between the primitive vectors
+    theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
+
+    if (theta < M_PI*M_HALF) then
+      this%stargeneral%narms = this%stargeneral%narms + 1
+      this%stargeneral%arms(this%stargeneral%narms, 1:dim) = (/0,1,-1/)
+    else if(theta > M_PI*M_HALF) then
+      this%stargeneral%narms = this%stargeneral%narms + 1
+      this%stargeneral%arms(this%stargeneral%narms, 1:dim) = (/0,1,+1/)
+    end if
+      
+    vec1(1:dim)=sb%rlattice_primitive(3,1:dim)
+    vec2(1:dim)=sb%rlattice_primitive(1,1:dim)
+    !get the angle between the primitive vectors
+    theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
+
+    if (theta < M_PI*M_HALF) then
+      this%stargeneral%narms = this%stargeneral%narms + 1
+      this%stargeneral%arms(this%stargeneral%narms, 1:dim) = (/-1,0,1/)
+    else if(theta > M_PI*M_HALF) then
+      this%stargeneral%narms = this%stargeneral%narms + 1
+      this%stargeneral%arms(this%stargeneral%narms, 1:dim) = (/+1,0,1/)
+    end if
+
+    do idim = 1, dim
+      print *, idim, "stargeneral%arms = ", this%stargeneral%arms(idim, 1:dim)
+    end do   
+      
+      
+    POP_SUB(stencil_stargeneral_get_arms)      
+  end subroutine stencil_stargeneral_get_arms
+
 
   ! ---------------------------------------------------------
-  integer function stencil_stargeneral_size_lapl(dim, order) result(n)
+  integer function stencil_stargeneral_size_lapl(this, dim, order) result(n)
+    type(stencil_t),     intent(inout) :: this 
     integer, intent(in) :: dim
     integer, intent(in) :: order
 
     PUSH_SUB(stencil_stargeneral_size_lapl)
 
+!     n = 2*dim*order + 1
+!     if(dim == 2) n = n + 12
+!     !FCC
+!     if(dim == 3) n = 2*dim*order * 2 + 1
+! !     !HEX
+! !     if(dim == 3) n = 2*dim*order + 2*order + 1
+!     !normal star
     n = 2*dim*order + 1
-    if(dim == 2) n = n + 12
-    !FCC
-    if(dim == 3) n = 2*dim*order * 2 + 1
-!     !HEX
-!     if(dim == 3) n = 2*dim*order + 2*order + 1
+
+    ! star general 
+    n = n + 2 * order * this%stargeneral%narms 
 
     POP_SUB(stencil_stargeneral_size_lapl)
   end function stencil_stargeneral_size_lapl
@@ -107,7 +197,7 @@ contains
 
     PUSH_SUB(stencil_stargeneral_get_lapl)
 
-    call stencil_allocate(this, stencil_stargeneral_size_lapl(dim, order))
+    call stencil_allocate(this, stencil_stargeneral_size_lapl(this, dim, order))
 
     n = 1
     select case(dim)
@@ -129,18 +219,15 @@ contains
           this%points(i, n) = j
         end do
       end do
-      n = n + 1; this%points(1:2, n) = (/ -2,  1 /)
-      n = n + 1; this%points(1:2, n) = (/ -2, -1 /)
-      n = n + 1; this%points(1:2, n) = (/ -1,  2 /)
-      n = n + 1; this%points(1:2, n) = (/ -1,  1 /)
-      n = n + 1; this%points(1:2, n) = (/ -1, -1 /)
-      n = n + 1; this%points(1:2, n) = (/ -1, -2 /)
-      n = n + 1; this%points(1:2, n) = (/  1,  2 /)
-      n = n + 1; this%points(1:2, n) = (/  1,  1 /)
-      n = n + 1; this%points(1:2, n) = (/  1, -1 /)
-      n = n + 1; this%points(1:2, n) = (/  1, -2 /)
-      n = n + 1; this%points(1:2, n) = (/  2,  1 /)
-      n = n + 1; this%points(1:2, n) = (/  2, -1 /)
+      
+      do j = -order, order
+        if(j == 0) cycle
+        do i = 1, this%stargeneral%narms 
+          n = n + 1
+          this%points(1:2, n) = this%stargeneral%arms(i, 1:2)*j
+        end do 
+      end do
+      
     case(3)
       got_center = .false.
       
@@ -161,18 +248,26 @@ contains
           this%points(i, n) = j
         end do
       end do
-      
-      !FCC
+
       do j = -order, order
         if(j == 0) cycle
-        n = n + 1
-        this%points(1:3, n) = (/j,-j,0/)
-        n = n + 1
-        this%points(1:3, n) = (/j,0,-j/)
-        n = n + 1
-        this%points(1:3, n) = (/0,j,-j/)
-
+        do i = 1, this%stargeneral%narms 
+          n = n + 1
+          this%points(1:3, n) = this%stargeneral%arms(i, 1:3)*j
+        end do 
       end do
+      
+!       !FCC
+!       do j = -order, order
+!         if(j == 0) cycle
+!         n = n + 1
+!         this%points(1:3, n) = (/j,-j,0/)
+!         n = n + 1
+!         this%points(1:3, n) = (/j,0,-j/)
+!         n = n + 1
+!         this%points(1:3, n) = (/0,j,-j/)
+!
+!       end do
 
       !HEX
 !       do j = -order, order
@@ -234,10 +329,11 @@ contains
 
 
   ! ---------------------------------------------------------
-  subroutine stencil_stargeneral_pol_lapl(dim, order, pol)
-    integer, intent(in)  :: dim
-    integer, intent(in)  :: order
-    integer, intent(out) :: pol(:,:) !< pol(dim, order)
+  subroutine stencil_stargeneral_pol_lapl(this, dim, order, pol)
+    type(stencil_t), intent(out) :: this
+    integer, intent(in)          :: dim
+    integer, intent(in)          :: order
+    integer, intent(out)         :: pol(:,:) !< pol(dim, order)
 
     integer :: i, j, n
 
@@ -318,7 +414,8 @@ contains
 
 
   ! ---------------------------------------------------------
-  subroutine stencil_stargeneral_pol_grad(dim, dir, order, pol)
+  subroutine stencil_stargeneral_pol_grad(this, dim, dir, order, pol)
+    type(stencil_t), intent(out) :: this
     integer, intent(in)  :: dim
     integer, intent(in)  :: dir
     integer, intent(in)  :: order
