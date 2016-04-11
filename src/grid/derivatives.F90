@@ -45,6 +45,7 @@ module derivatives_m
   use stencil_cube_m
   use stencil_star_m
   use stencil_starplus_m
+  use stencil_stargeneral_m
   use stencil_variational_m
   use test_parameters_m
   use transfer_table_m
@@ -101,7 +102,8 @@ module derivatives_m
     DER_STAR         = 1,   &
     DER_VARIATIONAL  = 2,   &
     DER_CUBE         = 3,   &
-    DER_STARPLUS     = 4
+    DER_STARPLUS     = 4,   &
+    DER_STARGENERAL  = 5
 
   integer, parameter ::     &
     BLOCKING = 1,           &
@@ -210,6 +212,8 @@ contains
     !% A cube of points around each point.
     !%Option stencil_starplus 4
     !% The star, plus a number of off-axis points.
+    !%Option stencil_stargeneral 5
+    !% The star whatever.
     !%End
     if(use_curvilinear) then
       call parse_variable('DerivativesStencil', DER_STARPLUS, der%stencil_type)
@@ -339,6 +343,8 @@ contains
         extent = stencil_cube_extent(dir, der%order)
       case(DER_STARPLUS)
         extent = stencil_cube_extent(dir, der%order)
+      case(DER_STARGENERAL)
+        extent = stencil_cube_extent(dir, der%order)
       end select
       
     POP_SUB(stencil_extent)
@@ -364,6 +370,8 @@ contains
       call stencil_cube_get_lapl(der%lapl%stencil, der%dim, der%order)
     case(DER_STARPLUS)
       call stencil_starplus_get_lapl(der%lapl%stencil, der%dim, der%order)
+    case(DER_STARGENERAL)
+      call stencil_stargeneral_get_lapl(der%lapl%stencil, der%dim, der%order)
     end select
 
     POP_SUB(derivatives_get_stencil_lapl)
@@ -415,6 +423,8 @@ contains
         call stencil_cube_get_grad(der%grad(ii)%stencil, der%dim, der%order)
       case(DER_STARPLUS)
         call stencil_starplus_get_grad(der%grad(ii)%stencil, der%dim, ii, der%order)
+      case(DER_STARGENERAL)
+        call stencil_stargeneral_get_grad(der%grad(ii)%stencil, der%dim, ii, der%order)
       end select
     end do
 
@@ -442,7 +452,7 @@ contains
     call boundaries_init(der%boundaries, mesh)
 
     ASSERT(associated(der%op))
-    ASSERT(der%stencil_type>=DER_STAR .and. der%stencil_type<=DER_STARPLUS)
+    ASSERT(der%stencil_type>=DER_STAR .and. der%stencil_type<=DER_STARGENERAL)
     ASSERT(.not.(der%stencil_type==DER_VARIATIONAL .and. mesh%use_curvilinear))
 
     der%mesh => mesh    ! make a pointer to the underlying mesh
@@ -563,6 +573,26 @@ contains
       SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(der%dim+1)%stencil%size))
       SAFE_ALLOCATE(rhs(1:der%op(i)%stencil%size, 1:1))
       call stencil_starplus_pol_lapl(der%dim, der%order, polynomials)
+      call get_rhs_lapl(rhs(:, 1))
+      name = "Laplacian"
+      call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, 1, der%op(der%dim+1:der%dim+1), name)
+      SAFE_DEALLOCATE_A(polynomials)
+      SAFE_DEALLOCATE_A(rhs)
+
+    case(DER_STARGENERAL)
+      do i = 1, der%dim
+        SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(i)%stencil%size))
+        SAFE_ALLOCATE(rhs(1:der%op(i)%stencil%size, 1:1))
+        call stencil_stargeneral_pol_grad(der%dim, i, der%order, polynomials)
+        call get_rhs_grad(i, rhs(:, 1))
+        name = index2axis(i) // "-gradient"
+!         call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, 1, der%op(i:i), name)
+        SAFE_DEALLOCATE_A(polynomials)
+        SAFE_DEALLOCATE_A(rhs)
+      end do
+      SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(der%dim+1)%stencil%size))
+      SAFE_ALLOCATE(rhs(1:der%op(i)%stencil%size, 1:1))
+      call stencil_stargeneral_pol_lapl(der%dim, der%order, polynomials)
       call get_rhs_lapl(rhs(:, 1))
       name = "Laplacian"
       call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, 1, der%op(der%dim+1:der%dim+1), name)
@@ -752,7 +782,10 @@ contains
           ! TODO : this internal if clause is inefficient - the condition is determined globally
           if (mesh%sb%nonorthogonal) x(1:dim) = matmul(mesh%sb%rlattice_primitive(1:dim,1:dim), x(1:dim))
         end if
-
+        
+        print *,i, x(:)
+        write (99,*)  x(:)
+         
 ! NB: these masses are applied on the cartesian directions. Should add a check for non-orthogonal axes
         forall(j = 1:dim) x(j) = x(j)*sqrt(masses(j))
 

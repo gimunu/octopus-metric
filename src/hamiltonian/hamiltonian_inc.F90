@@ -107,7 +107,7 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
 
   bs = hardware%X(block_size)
 
-
+  if (.false.) then
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
    write (str1, '(I3)') ik
@@ -167,7 +167,7 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
     end if
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+end if
 
 
   if(apply_phase) then ! we copy psi to epsi applying the exp(i k.r) phase
@@ -224,10 +224,10 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
   ! and the non-local one
   if (hm%ep%non_local .and. iand(TERM_NON_LOCAL_POTENTIAL, terms_) /= 0) then
     if(hm%hm_base%apply_projector_matrices) then
-      print *, "matrices non-local!!"
+!       print *, "matrices non-local!!"
       call X(hamiltonian_base_nlocal_finish)(hm%hm_base, der%mesh, hm%d, ik, projection, hpsib)
     else
-      print *, "xavier non-local!!"
+!       print *, "xavier non-local!!"
       ASSERT(.not. batch_is_packed(hpsib))
       call X(project_psi_batch)(der%mesh, hm%ep%proj, hm%ep%natoms, hm%d%dim, epsib, hpsib, ik)
     end if
@@ -350,6 +350,8 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
     end do
   end if
 
+
+  if (.false.) then
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     write (str1, '(I3)') ik
@@ -380,7 +382,7 @@ subroutine X(hamiltonian_apply_batch) (hm, der, psib, hpsib, ik, time, Imtime, t
 !                                 ".", "lapl_wf",  this%mesh, real(opffb%states_linear(blocksize)%X(psi), 8), unit_one, ierr)
 
   stop
-
+end if
 
   if(apply_phase) then
     call X(hamiltonian_phase)(hm, der, der%mesh%np, ik, .true., hpsib)
