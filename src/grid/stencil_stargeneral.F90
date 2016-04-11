@@ -35,7 +35,6 @@ module stencil_stargeneral_m
     stencil_stargeneral_get_grad,  &
     stencil_stargeneral_pol_grad
 
-    latt_sym = 
 
 contains
 
