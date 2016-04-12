@@ -53,11 +53,12 @@ module derivatives_m
   use utils_m
   use varinfo_m
 
-  use io_binary_m
-  use io_function_m
-  use io_m
-  use unit_m
-  use unit_system_m
+!   debug purposes 
+!   use io_binary_m
+!   use io_function_m
+!   use io_m
+!   use unit_m
+!   use unit_system_m
   
   implicit none
 
@@ -549,22 +550,19 @@ contains
       SAFE_DEALLOCATE_A(polynomials)
       SAFE_DEALLOCATE_A(rhs)
 
-    case(DER_STARGENERAL)
+    case(DER_STARGENERAL)    
     
-    
-      do i = 1, der%dim
-        
+      do i = 1, der%dim        
         SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(i)%stencil%size))
         SAFE_ALLOCATE(rhs(1:der%op(i)%stencil%size, 1:1))
         call stencil_star_polynomials_grad(i, der%order, polynomials)
-!         call stencil_stargeneral_pol_grad(der%op(i)%stencil, der%dim, i, der%order, polynomials)
         call get_rhs_grad(i, rhs(:, 1))
         name = index2axis(i) // "-gradient"
-!         call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, 1, der%op(i:i), name)
+        call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, 1, der%op(i:i), name)
         SAFE_DEALLOCATE_A(polynomials)
         SAFE_DEALLOCATE_A(rhs)
       end do
-!       call stencil_stargeneral_get_arms(der%op(der%dim+1)%stencil, der%mesh%sb)
+
       SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(der%dim+1)%stencil%size))
       SAFE_ALLOCATE(rhs(1:der%op(der%dim+1)%stencil%size, 1:1))
       call stencil_stargeneral_pol_lapl(der%op(der%dim+1)%stencil, der%dim, der%order, polynomials)
@@ -689,13 +687,6 @@ contains
     message(1) = 'Info: Generating weights for finite-difference discretization of ' // trim(name)
     call messages_info(1)
 
-    ! FIXME: check which stencil we are using and decide from that whether to warn or not
-!     if (mesh%sb%nonorthogonal) then
-!       message(1) = 'Info: non-orthogonal axes detected for derivatives discretization.'
-!       message(2) = '  Need off-diagonal points in stencil - STAR will not work'
-!       call messages_info(2)
-!     end if
-
     ! use to generate power lookup table
     pow_max = maxval(pol)
     SAFE_ALLOCATE(powers(1:dim, 0:pow_max))
@@ -716,8 +707,8 @@ contains
           if (mesh%sb%nonorthogonal) x(1:dim) = matmul(mesh%sb%rlattice_primitive(1:dim,1:dim), x(1:dim))
         end if
         
-        print *,i, x(:)
-        write (99,*)  x(:)
+!         print *,i, x(:)
+!         write (99,*)  x(:)
          
 ! NB: these masses are applied on the cartesian directions. Should add a check for non-orthogonal axes
         forall(j = 1:dim) x(j) = x(j)*sqrt(masses(j))

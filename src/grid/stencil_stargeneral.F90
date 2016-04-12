@@ -32,9 +32,6 @@ module stencil_stargeneral_m
     stencil_stargeneral_extent,    &
     stencil_stargeneral_get_lapl,  &
     stencil_stargeneral_pol_lapl,  &
-!     stencil_stargeneral_size_grad, &
-!     stencil_stargeneral_get_grad,  &
-!     stencil_stargeneral_pol_grad,  &
     stencil_stargeneral_get_arms
 
 
@@ -114,9 +111,9 @@ contains
       this%stargeneral%arms(this%stargeneral%narms, 1:dim) = (/+1,0,1/)
     end if
 
-    do idim = 1, dim
-      print *, idim, "stargeneral%arms = ", this%stargeneral%arms(idim, 1:dim)
-    end do   
+!     do idim = 1, dim
+!       print *, idim, "stargeneral%arms = ", this%stargeneral%arms(idim, 1:dim)
+!     end do
       
       
     POP_SUB(stencil_stargeneral_get_arms)      
@@ -143,7 +140,7 @@ contains
     ! star general 
     n = n + 2 * order * this%stargeneral%narms 
     
-    print *, "size = ", n, this%stargeneral%narms 
+!     print *, "size = ", n, this%stargeneral%narms 
 
     POP_SUB(stencil_stargeneral_size_lapl)
   end function stencil_stargeneral_size_lapl
@@ -173,20 +170,6 @@ contains
     POP_SUB(stencil_stargeneral_extent)
   end function stencil_stargeneral_extent
 
-
-!   ! ---------------------------------------------------------
-!   integer function stencil_stargeneral_size_grad(dim, order) result(n)
-!     integer, intent(in) :: dim
-!     integer, intent(in) :: order
-!
-!     PUSH_SUB(stencil_stargeneral_size_grad)
-!
-!     n = 2*order + 1
-!     if(dim == 2) n = n + 2
-!     if(dim == 3) n = n + 4
-!
-!     POP_SUB(stencil_stargeneral_size_grad)
-!   end function stencil_stargeneral_size_grad
 
 
   ! ---------------------------------------------------------
@@ -260,32 +243,13 @@ contains
         end do 
       end do
       
-!       !FCC
-!       do j = -order, order
-!         if(j == 0) cycle
-!         n = n + 1
-!         this%points(1:3, n) = (/j,-j,0/)
-!         n = n + 1
-!         this%points(1:3, n) = (/j,0,-j/)
-!         n = n + 1
-!         this%points(1:3, n) = (/0,j,-j/)
+
+
+!       print *, "(stencil_stargeneral_get_lapl) n = ", n
 !
+!       do i=1, n
+!         print *, i, "this%points(1:3, n) = ", this%points(1:3, i)
 !       end do
-
-      !HEX
-!       do j = -order, order
-!         if(j == 0) cycle
-!         n = n + 1
-!         this%points(1:3, n) = (/j,-j,0/)
-!
-!       end do
-
-
-      print *, "(stencil_stargeneral_get_lapl) n = ", n
-      
-      do i=1, n
-        print *, i, "this%points(1:3, n) = ", this%points(1:3, i) 
-      end do
       
       
       
@@ -299,36 +263,6 @@ contains
   end subroutine stencil_stargeneral_get_lapl
 
 
-!   ! ---------------------------------------------------------
-!   subroutine stencil_stargeneral_get_grad(this, dim, dir, order)
-!     type(stencil_t), intent(out) :: this
-!     integer,         intent(in)  :: dim
-!     integer,         intent(in)  :: dir
-!     integer,         intent(in)  :: order
-!
-!     integer :: i, n, j
-!
-!     PUSH_SUB(stencil_stargeneral_get_grad)
-!
-!     call stencil_allocate(this, stencil_stargeneral_size_grad(dim, order))
-!
-!     n = 1
-!     do i = -order, order
-!       this%points(dir, n) = i
-!       n = n + 1
-!     end do
-!     do j = 1, dim
-!       if(j==dir) cycle
-!       this%points(j, n) = -1
-!       n = n + 1
-!       this%points(j, n) =  1
-!       n = n + 1
-!     end do
-!
-!     call stencil_init_center(this)
-!
-!     POP_SUB(stencil_stargeneral_get_grad)
-!   end subroutine stencil_stargeneral_get_grad
 
 
   ! ---------------------------------------------------------
@@ -414,68 +348,17 @@ contains
 
       
       
-      print *, "(stencil_stargeneral_pol_lapl) n = ", n
-      
-      do i=1, n
-        print *, i, "pol(1:3, n) = ", pol(1:3, i) 
-      end do
+!       print *, "(stencil_stargeneral_pol_lapl) n = ", n
+!
+!       do i=1, n
+!         print *, i, "pol(1:3, n) = ", pol(1:3, i)
+!       end do
 
     end select
 
     POP_SUB(stencil_stargeneral_pol_lapl)
   end subroutine stencil_stargeneral_pol_lapl
 
-
-!   ! ---------------------------------------------------------
-!   subroutine stencil_stargeneral_pol_grad(this, dim, dir, order, pol)
-!     type(stencil_t), intent(out) :: this
-!     integer, intent(in)  :: dim
-!     integer, intent(in)  :: dir
-!     integer, intent(in)  :: order
-!     integer, intent(out) :: pol(:,:) !< pol(dim, order)
-!
-!     integer :: j, n
-!
-!     PUSH_SUB(stencil_stargeneral_pol_grad)
-!
-!     pol(:,:) = 0
-!     do j = 0, 2*order
-!       pol(dir, j+1) = j
-!     end do
-!     n = 2*order + 1
-!
-!     select case(dim)
-!     case(2)
-!       select case(dir)
-!       case(1)
-!         n = n + 1; pol(1:2, n) = (/ 0, 1 /)
-!         n = n + 1; pol(1:2, n) = (/ 0, 2 /)
-!       case(2)
-!         n = n + 1; pol(1:2, n) = (/ 1, 0 /)
-!         n = n + 1; pol(1:2, n) = (/ 2, 0 /)
-!       end select
-!     case(3)
-!       select case(dir)
-!       case(1)
-!         n = n + 1; pol(1:3, n) = (/ 0, 1, 0 /)
-!         n = n + 1; pol(1:3, n) = (/ 0, 2, 0 /)
-!         n = n + 1; pol(1:3, n) = (/ 0, 0, 1 /)
-!         n = n + 1; pol(1:3, n) = (/ 0, 0, 2 /)
-!       case(2)
-!         n = n + 1; pol(1:3, n) = (/ 1, 0, 0 /)
-!         n = n + 1; pol(1:3, n) = (/ 2, 0, 0 /)
-!         n = n + 1; pol(1:3, n) = (/ 0, 0, 1 /)
-!         n = n + 1; pol(1:3, n) = (/ 0, 0, 2 /)
-!       case(3)
-!         n = n + 1; pol(1:3, n) = (/ 1, 0, 0 /)
-!         n = n + 1; pol(1:3, n) = (/ 2, 0, 0 /)
-!         n = n + 1; pol(1:3, n) = (/ 0, 1, 0 /)
-!         n = n + 1; pol(1:3, n) = (/ 0, 2, 0 /)
-!       end select
-!     end select
-!
-!     POP_SUB(stencil_stargeneral_pol_grad)
-!   end subroutine stencil_stargeneral_pol_grad
 
 end module stencil_stargeneral_m
 

@@ -113,10 +113,6 @@ contains
         end do
       end do
     end select
-    
-    do i=1, n-1
-      if (this%points(3, i) == 0) print *, i, "this%points(1:3, n) = ", this%points(1:3, i) 
-    end do
 
     call stencil_init_center(this)
 
@@ -161,11 +157,6 @@ contains
         end do
       end do
     end select
-    
-    do i=1, n-1
-      if (pol(3, i) == 0) print *, i, "pol(1:3, n) = ", pol(1:3, i) 
-    end do
-    
 
     POP_SUB(stencil_cube_polynomials_lapl)
   end subroutine stencil_cube_polynomials_lapl
