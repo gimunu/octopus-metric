@@ -218,7 +218,7 @@ contains
     !%End
     default_stencil = DER_STAR
     if(use_curvilinear) default_stencil = DER_STARPLUS
-    if(der%mesh%sb%nonorthogonal) default_stencil = DER_STARGENERAL
+    if(sb%nonorthogonal) default_stencil = DER_STARGENERAL
 
     call parse_variable('DerivativesStencil', default_stencil, der%stencil_type)
     
@@ -281,7 +281,7 @@ contains
     der%grad => der%op
     der%lapl => der%op(der%dim + 1)
 
-    call derivatives_get_stencil_lapl(der)
+    call derivatives_get_stencil_lapl(der, sb)
     call derivatives_get_stencil_grad(der)
 
     ! find out how many ghost points we need in each dimension
@@ -354,8 +354,9 @@ contains
 
 
   ! ---------------------------------------------------------
-  subroutine derivatives_get_stencil_lapl(der)
-    type(derivatives_t), intent(inout) :: der
+  subroutine derivatives_get_stencil_lapl(der, sb)
+    type(derivatives_t),      intent(inout) :: der
+    type(simul_box_t), optional,intent(in)  :: sb
 
     PUSH_SUB(derivatives_get_stencil_lapl)
 
@@ -373,6 +374,7 @@ contains
     case(DER_STARPLUS)
       call stencil_starplus_get_lapl(der%lapl%stencil, der%dim, der%order)
     case(DER_STARGENERAL)
+      call stencil_stargeneral_get_arms(der%lapl%stencil, sb)
       call stencil_stargeneral_get_lapl(der%lapl%stencil, der%dim, der%order)
     end select
 
@@ -402,6 +404,7 @@ contains
   ! ---------------------------------------------------------
   subroutine derivatives_get_stencil_grad(der)
     type(derivatives_t), intent(inout) :: der
+      
 
     integer  :: ii
     character :: dir_label
@@ -426,7 +429,7 @@ contains
       case(DER_STARPLUS)
         call stencil_starplus_get_grad(der%grad(ii)%stencil, der%dim, ii, der%order)
       case(DER_STARGENERAL)
-        call stencil_stargeneral_get_grad(der%grad(ii)%stencil, der%dim, ii, der%order)
+        call stencil_star_get_grad(der%grad(ii)%stencil, ii, der%order)
       end select
     end do
 
@@ -550,17 +553,18 @@ contains
     
     
       do i = 1, der%dim
-        call stencil_stargeneral_get_arms(der%op(i)%stencil, der%mesh%sb)
+        
         SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(i)%stencil%size))
         SAFE_ALLOCATE(rhs(1:der%op(i)%stencil%size, 1:1))
-        call stencil_stargeneral_pol_grad(der%op(i)%stencil, der%dim, i, der%order, polynomials)
+        call stencil_star_polynomials_grad(i, der%order, polynomials)
+!         call stencil_stargeneral_pol_grad(der%op(i)%stencil, der%dim, i, der%order, polynomials)
         call get_rhs_grad(i, rhs(:, 1))
         name = index2axis(i) // "-gradient"
 !         call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, 1, der%op(i:i), name)
         SAFE_DEALLOCATE_A(polynomials)
         SAFE_DEALLOCATE_A(rhs)
       end do
-      call stencil_stargeneral_get_arms(der%op(der%dim+1)%stencil, der%mesh%sb)
+!       call stencil_stargeneral_get_arms(der%op(der%dim+1)%stencil, der%mesh%sb)
       SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(der%dim+1)%stencil%size))
       SAFE_ALLOCATE(rhs(1:der%op(der%dim+1)%stencil%size, 1:1))
       call stencil_stargeneral_pol_lapl(der%op(der%dim+1)%stencil, der%dim, der%order, polynomials)

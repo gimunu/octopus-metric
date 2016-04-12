@@ -32,9 +32,9 @@ module stencil_stargeneral_m
     stencil_stargeneral_extent,    &
     stencil_stargeneral_get_lapl,  &
     stencil_stargeneral_pol_lapl,  &
-    stencil_stargeneral_size_grad, &
-    stencil_stargeneral_get_grad,  &
-    stencil_stargeneral_pol_grad,  &
+!     stencil_stargeneral_size_grad, &
+!     stencil_stargeneral_get_grad,  &
+!     stencil_stargeneral_pol_grad,  &
     stencil_stargeneral_get_arms
 
 
@@ -50,8 +50,9 @@ contains
     FLOAT   :: vec1(1:3), vec2(1:3), theta, arm(1:3)
     
     PUSH_SUB(stencil_stargeneral_get_arms)  
-    dim = sb%dim
-    
+
+    dim = sb%dim    
+       
     vec1(:) = M_ZERO
     vec2(:) = M_ZERO
     
@@ -85,7 +86,7 @@ contains
       return 
     end if   
 
-    ! We are already dim>2
+    ! dim>2
     
     vec1(1:dim)=sb%rlattice_primitive(2,1:dim)
     vec2(1:dim)=sb%rlattice_primitive(3,1:dim)
@@ -141,6 +142,8 @@ contains
 
     ! star general 
     n = n + 2 * order * this%stargeneral%narms 
+    
+    print *, "size = ", n, this%stargeneral%narms 
 
     POP_SUB(stencil_stargeneral_size_lapl)
   end function stencil_stargeneral_size_lapl
@@ -171,19 +174,19 @@ contains
   end function stencil_stargeneral_extent
 
 
-  ! ---------------------------------------------------------
-  integer function stencil_stargeneral_size_grad(dim, order) result(n)
-    integer, intent(in) :: dim
-    integer, intent(in) :: order
-
-    PUSH_SUB(stencil_stargeneral_size_grad)
-
-    n = 2*order + 1
-    if(dim == 2) n = n + 2
-    if(dim == 3) n = n + 4
-
-    POP_SUB(stencil_stargeneral_size_grad)
-  end function stencil_stargeneral_size_grad
+!   ! ---------------------------------------------------------
+!   integer function stencil_stargeneral_size_grad(dim, order) result(n)
+!     integer, intent(in) :: dim
+!     integer, intent(in) :: order
+!
+!     PUSH_SUB(stencil_stargeneral_size_grad)
+!
+!     n = 2*order + 1
+!     if(dim == 2) n = n + 2
+!     if(dim == 3) n = n + 4
+!
+!     POP_SUB(stencil_stargeneral_size_grad)
+!   end function stencil_stargeneral_size_grad
 
 
   ! ---------------------------------------------------------
@@ -296,36 +299,36 @@ contains
   end subroutine stencil_stargeneral_get_lapl
 
 
-  ! ---------------------------------------------------------
-  subroutine stencil_stargeneral_get_grad(this, dim, dir, order)
-    type(stencil_t), intent(out) :: this
-    integer,         intent(in)  :: dim
-    integer,         intent(in)  :: dir
-    integer,         intent(in)  :: order
-
-    integer :: i, n, j
-
-    PUSH_SUB(stencil_stargeneral_get_grad)
-
-    call stencil_allocate(this, stencil_stargeneral_size_grad(dim, order))
-
-    n = 1
-    do i = -order, order
-      this%points(dir, n) = i
-      n = n + 1
-    end do
-    do j = 1, dim
-      if(j==dir) cycle
-      this%points(j, n) = -1
-      n = n + 1
-      this%points(j, n) =  1
-      n = n + 1
-    end do
-
-    call stencil_init_center(this)
-
-    POP_SUB(stencil_stargeneral_get_grad)
-  end subroutine stencil_stargeneral_get_grad
+!   ! ---------------------------------------------------------
+!   subroutine stencil_stargeneral_get_grad(this, dim, dir, order)
+!     type(stencil_t), intent(out) :: this
+!     integer,         intent(in)  :: dim
+!     integer,         intent(in)  :: dir
+!     integer,         intent(in)  :: order
+!
+!     integer :: i, n, j
+!
+!     PUSH_SUB(stencil_stargeneral_get_grad)
+!
+!     call stencil_allocate(this, stencil_stargeneral_size_grad(dim, order))
+!
+!     n = 1
+!     do i = -order, order
+!       this%points(dir, n) = i
+!       n = n + 1
+!     end do
+!     do j = 1, dim
+!       if(j==dir) cycle
+!       this%points(j, n) = -1
+!       n = n + 1
+!       this%points(j, n) =  1
+!       n = n + 1
+!     end do
+!
+!     call stencil_init_center(this)
+!
+!     POP_SUB(stencil_stargeneral_get_grad)
+!   end subroutine stencil_stargeneral_get_grad
 
 
   ! ---------------------------------------------------------
@@ -382,15 +385,25 @@ contains
         end do
       end do
 
-      !FCC
       do j = 1, 2*order
-        n = n + 1
-        pol(1:3, n) = (/j,1,0/)
-        n = n + 1
-        pol(1:3, n) = (/1,0,j/)
-        n = n + 1
-        pol(1:3, n) = (/0,j,1/)
+        do i = 1, this%stargeneral%narms 
+          n = n + 1
+          if (this%stargeneral%arms(i,1)==0 ) pol(1:3, n) = (/0,j,1/)
+          if (this%stargeneral%arms(i,2)==0 ) pol(1:3, n) = (/1,0,j/)
+          if (this%stargeneral%arms(i,3)==0 ) pol(1:3, n) = (/j,1,0/)
+          
+        end do
       end do
+
+!       !FCC
+!       do j = 1, 2*order
+!         n = n + 1
+!         pol(1:3, n) = (/j,1,0/)
+!         n = n + 1
+!         pol(1:3, n) = (/1,0,j/)
+!         n = n + 1
+!         pol(1:3, n) = (/0,j,1/)
+!       end do
       
 !       !HEX
 !       do j = 1, 2*order
@@ -413,56 +426,56 @@ contains
   end subroutine stencil_stargeneral_pol_lapl
 
 
-  ! ---------------------------------------------------------
-  subroutine stencil_stargeneral_pol_grad(this, dim, dir, order, pol)
-    type(stencil_t), intent(out) :: this
-    integer, intent(in)  :: dim
-    integer, intent(in)  :: dir
-    integer, intent(in)  :: order
-    integer, intent(out) :: pol(:,:) !< pol(dim, order)
-
-    integer :: j, n
-
-    PUSH_SUB(stencil_stargeneral_pol_grad)
-
-    pol(:,:) = 0
-    do j = 0, 2*order
-      pol(dir, j+1) = j
-    end do
-    n = 2*order + 1
-
-    select case(dim)
-    case(2)
-      select case(dir)
-      case(1)
-        n = n + 1; pol(1:2, n) = (/ 0, 1 /)
-        n = n + 1; pol(1:2, n) = (/ 0, 2 /)
-      case(2)
-        n = n + 1; pol(1:2, n) = (/ 1, 0 /)
-        n = n + 1; pol(1:2, n) = (/ 2, 0 /)
-      end select
-    case(3)
-      select case(dir)
-      case(1)
-        n = n + 1; pol(1:3, n) = (/ 0, 1, 0 /)
-        n = n + 1; pol(1:3, n) = (/ 0, 2, 0 /)
-        n = n + 1; pol(1:3, n) = (/ 0, 0, 1 /)
-        n = n + 1; pol(1:3, n) = (/ 0, 0, 2 /)
-      case(2)
-        n = n + 1; pol(1:3, n) = (/ 1, 0, 0 /)
-        n = n + 1; pol(1:3, n) = (/ 2, 0, 0 /)
-        n = n + 1; pol(1:3, n) = (/ 0, 0, 1 /)
-        n = n + 1; pol(1:3, n) = (/ 0, 0, 2 /)
-      case(3)
-        n = n + 1; pol(1:3, n) = (/ 1, 0, 0 /)
-        n = n + 1; pol(1:3, n) = (/ 2, 0, 0 /)
-        n = n + 1; pol(1:3, n) = (/ 0, 1, 0 /)
-        n = n + 1; pol(1:3, n) = (/ 0, 2, 0 /)
-      end select
-    end select
-
-    POP_SUB(stencil_stargeneral_pol_grad)
-  end subroutine stencil_stargeneral_pol_grad
+!   ! ---------------------------------------------------------
+!   subroutine stencil_stargeneral_pol_grad(this, dim, dir, order, pol)
+!     type(stencil_t), intent(out) :: this
+!     integer, intent(in)  :: dim
+!     integer, intent(in)  :: dir
+!     integer, intent(in)  :: order
+!     integer, intent(out) :: pol(:,:) !< pol(dim, order)
+!
+!     integer :: j, n
+!
+!     PUSH_SUB(stencil_stargeneral_pol_grad)
+!
+!     pol(:,:) = 0
+!     do j = 0, 2*order
+!       pol(dir, j+1) = j
+!     end do
+!     n = 2*order + 1
+!
+!     select case(dim)
+!     case(2)
+!       select case(dir)
+!       case(1)
+!         n = n + 1; pol(1:2, n) = (/ 0, 1 /)
+!         n = n + 1; pol(1:2, n) = (/ 0, 2 /)
+!       case(2)
+!         n = n + 1; pol(1:2, n) = (/ 1, 0 /)
+!         n = n + 1; pol(1:2, n) = (/ 2, 0 /)
+!       end select
+!     case(3)
+!       select case(dir)
+!       case(1)
+!         n = n + 1; pol(1:3, n) = (/ 0, 1, 0 /)
+!         n = n + 1; pol(1:3, n) = (/ 0, 2, 0 /)
+!         n = n + 1; pol(1:3, n) = (/ 0, 0, 1 /)
+!         n = n + 1; pol(1:3, n) = (/ 0, 0, 2 /)
+!       case(2)
+!         n = n + 1; pol(1:3, n) = (/ 1, 0, 0 /)
+!         n = n + 1; pol(1:3, n) = (/ 2, 0, 0 /)
+!         n = n + 1; pol(1:3, n) = (/ 0, 0, 1 /)
+!         n = n + 1; pol(1:3, n) = (/ 0, 0, 2 /)
+!       case(3)
+!         n = n + 1; pol(1:3, n) = (/ 1, 0, 0 /)
+!         n = n + 1; pol(1:3, n) = (/ 2, 0, 0 /)
+!         n = n + 1; pol(1:3, n) = (/ 0, 1, 0 /)
+!         n = n + 1; pol(1:3, n) = (/ 0, 2, 0 /)
+!       end select
+!     end select
+!
+!     POP_SUB(stencil_stargeneral_pol_grad)
+!   end subroutine stencil_stargeneral_pol_grad
 
 end module stencil_stargeneral_m
 
