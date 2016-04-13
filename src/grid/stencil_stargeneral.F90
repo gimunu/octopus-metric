@@ -97,6 +97,7 @@ contains
       this%stargeneral%narms = this%stargeneral%narms + 1
       this%stargeneral%arms(this%stargeneral%narms, 1:dim) = (/0,1,+1/)
     end if
+    !if theta == pi/2 we do not need additional arms
       
     vec1(1:dim)=sb%rlattice_primitive(3,1:dim)
     vec2(1:dim)=sb%rlattice_primitive(1,1:dim)
@@ -110,6 +111,7 @@ contains
       this%stargeneral%narms = this%stargeneral%narms + 1
       this%stargeneral%arms(this%stargeneral%narms, 1:dim) = (/+1,0,1/)
     end if
+    !if theta == pi/2 we do not need additional arms
 
 !     do idim = 1, dim
 !       print *, idim, "stargeneral%arms = ", this%stargeneral%arms(idim, 1:dim)
@@ -296,18 +298,13 @@ contains
           pol(i, n) = j
         end do
       end do
-      n = n + 1; pol(1:2, n) = (/ 1, 1 /)
-      n = n + 1; pol(1:2, n) = (/ 1, 2 /)
-      n = n + 1; pol(1:2, n) = (/ 1, 3 /)
-      n = n + 1; pol(1:2, n) = (/ 1, 4 /)
-      n = n + 1; pol(1:2, n) = (/ 2, 1 /)
-      n = n + 1; pol(1:2, n) = (/ 2, 2 /)
-      n = n + 1; pol(1:2, n) = (/ 2, 3 /)
-      n = n + 1; pol(1:2, n) = (/ 2, 4 /)
-      n = n + 1; pol(1:2, n) = (/ 3, 1 /)
-      n = n + 1; pol(1:2, n) = (/ 3, 2 /)
-      n = n + 1; pol(1:2, n) = (/ 4, 1 /)
-      n = n + 1; pol(1:2, n) = (/ 4, 2 /)
+
+      do j = 1, 2*order
+        do i = 1, this%stargeneral%narms 
+          n = n + 1
+          pol(1:2, n) = (/j,1/)          
+        end do
+      end do
       
     case(3)
       n = 1
