@@ -338,22 +338,28 @@ contains
 !           if (this%stargeneral%arms(i,3)==0 ) pol(1:3, n) = (/j,1,0/)
 
          ! sum(this%stargeneral%arms(i,1:dim))==0 just checks whether we have a -1 in the arm vector or not
-          if (this%stargeneral%arms(i,1)==0 .and. sum(this%stargeneral%arms(i,1:dim))==0 )then
-            pol(1:3, n) = (/0,j,1/)
-          else
-            pol(1:3, n) = (/0,1,j/)
+          if (this%stargeneral%arms(i,1)==0) then
+             if(sum(this%stargeneral%arms(i,1:dim))==0 )then
+               pol(1:3, n) = (/0,j,1/)
+            else
+              pol(1:3, n) = (/0,1,j/)
+            end if
           end if
 
-          if (this%stargeneral%arms(i,2)==0 .and. sum(this%stargeneral%arms(i,1:dim))==0 )then
-            pol(1:3, n) = (/1,0,j/)
-          else
-            pol(1:3, n) = (/j,0,1/)
+          if (this%stargeneral%arms(i,2)==0) then
+            if (sum(this%stargeneral%arms(i,1:dim))==0 )then
+              pol(1:3, n) = (/1,0,j/)
+            else
+              pol(1:3, n) = (/j,0,1/)
+            end if
           end if
 
-          if (this%stargeneral%arms(i,3)==0 .and. sum(this%stargeneral%arms(i,1:dim))==0 )then
-            pol(1:3, n) = (/j,1,0/)
-          else
-            pol(1:3, n) = (/1,j,0/)
+          if (this%stargeneral%arms(i,3)==0) then
+            if (sum(this%stargeneral%arms(i,1:dim))==0 )then
+              pol(1:3, n) = (/j,1,0/)
+            else
+              pol(1:3, n) = (/1,j,0/)
+            end if
           end if
           
 
