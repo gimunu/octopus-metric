@@ -61,10 +61,14 @@ contains
       return 
     end if   
     
-    vec1(1:dim)=sb%rlattice_primitive(1, 1:dim)
-    vec2(1:dim)=sb%rlattice_primitive(2, 1:dim)
+    vec1(1:dim)=sb%rlattice_primitive(1:dim, 1)
+    vec2(1:dim)=sb%rlattice_primitive(1:dim, 2)
     !get the angle between the primitive vectors
     theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
+    print *, "vec1(1:dim)", vec1(1:dim)
+    print *, "vec1(1:dim)", vec2(1:dim)
+    print *, theta
+    
 
     if (theta < M_PI*M_HALF) then
       this%stargeneral%narms = this%stargeneral%narms + 1
@@ -85,10 +89,13 @@ contains
 
     ! dim>2
     
-    vec1(1:dim)=sb%rlattice_primitive(2,1:dim)
-    vec2(1:dim)=sb%rlattice_primitive(3,1:dim)
+    vec1(1:dim)=sb%rlattice_primitive(1:dim, 2)
+    vec2(1:dim)=sb%rlattice_primitive(1:dim, 3)
     !get the angle between the primitive vectors
     theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
+    print *, vec1(1:dim)
+    print *, vec2(1:dim)
+    print *, theta
 
     if (theta < M_PI*M_HALF) then
       this%stargeneral%narms = this%stargeneral%narms + 1
@@ -99,10 +106,13 @@ contains
     end if
     !if theta == pi/2 we do not need additional arms
       
-    vec1(1:dim)=sb%rlattice_primitive(3,1:dim)
-    vec2(1:dim)=sb%rlattice_primitive(1,1:dim)
+    vec1(1:dim)=sb%rlattice_primitive(1:dim, 3)
+    vec2(1:dim)=sb%rlattice_primitive(1:dim, 1)
     !get the angle between the primitive vectors
     theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
+    print *, vec1(1:dim)
+    print *, vec2(1:dim)
+    print *, theta
 
     if (theta < M_PI*M_HALF) then
       this%stargeneral%narms = this%stargeneral%narms + 1
@@ -113,9 +123,9 @@ contains
     end if
     !if theta == pi/2 we do not need additional arms
 
-!     do idim = 1, dim
-!       print *, idim, "stargeneral%arms = ", this%stargeneral%arms(idim, 1:dim)
-!     end do
+    do idim = 1, this%stargeneral%narms
+      print *, idim, "stargeneral%arms = ", this%stargeneral%arms(idim, 1:dim)
+    end do
       
       
     POP_SUB(stencil_stargeneral_get_arms)      
@@ -302,7 +312,11 @@ contains
       do j = 1, 2*order
         do i = 1, this%stargeneral%narms 
           n = n + 1
-          pol(1:2, n) = (/j,1/)          
+          if (sum(this%stargeneral%arms(i,1:dim))==0 )then          
+            pol(1:2, n) = (/j,1/)          
+          else  
+            pol(1:2, n) = (/1,j/)          
+          end if  
         end do
       end do
       
@@ -319,9 +333,30 @@ contains
       do j = 1, 2*order
         do i = 1, this%stargeneral%narms 
           n = n + 1
-          if (this%stargeneral%arms(i,1)==0 ) pol(1:3, n) = (/0,j,1/)
-          if (this%stargeneral%arms(i,2)==0 ) pol(1:3, n) = (/1,0,j/)
-          if (this%stargeneral%arms(i,3)==0 ) pol(1:3, n) = (/j,1,0/)
+!           if (this%stargeneral%arms(i,1)==0 ) pol(1:3, n) = (/0,j,1/)
+!           if (this%stargeneral%arms(i,2)==0 ) pol(1:3, n) = (/1,0,j/)
+!           if (this%stargeneral%arms(i,3)==0 ) pol(1:3, n) = (/j,1,0/)
+
+         ! sum(this%stargeneral%arms(i,1:dim))==0 just checks whether we have a -1 in the arm vector or not
+          if (this%stargeneral%arms(i,1)==0 .and. sum(this%stargeneral%arms(i,1:dim))==0 )then
+            pol(1:3, n) = (/0,j,1/)
+          else
+            pol(1:3, n) = (/0,1,j/)
+          end if
+
+          if (this%stargeneral%arms(i,2)==0 .and. sum(this%stargeneral%arms(i,1:dim))==0 )then
+            pol(1:3, n) = (/1,0,j/)
+          else
+            pol(1:3, n) = (/j,0,1/)
+          end if
+
+          if (this%stargeneral%arms(i,3)==0 .and. sum(this%stargeneral%arms(i,1:dim))==0 )then
+            pol(1:3, n) = (/j,1,0/)
+          else
+            pol(1:3, n) = (/1,j,0/)
+          end if
+          
+
           
         end do
       end do

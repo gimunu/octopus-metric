@@ -933,7 +933,8 @@ contains
     do ik = 1, kpoints_number(this)
       write(message(1),'(i8,1x)') ik
       do idir = 1, this%full%dim
-        write(str_tmp,'(f12.4)') this%reduced%red_point(idir, ik)
+        write(str_tmp,'(f12.4)') this%reduced%point(idir, ik)
+!         write(str_tmp,'(f12.4)') this%reduced%red_point(idir, ik)
         message(1) = trim(message(1)) // trim(str_tmp)
       end do
       write(str_tmp,'(f12.4)') kpoints_get_weight(this, ik)

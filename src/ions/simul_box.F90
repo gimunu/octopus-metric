@@ -152,7 +152,7 @@ contains
     call simul_box_build_lattice(sb)       ! Build lattice vectors.
     call simul_box_atoms_in_box(sb, geo, .true.)   ! Put all the atoms inside the box.
 
-    call simul_box_check_atoms_are_too_close(geo, sb)
+!     call simul_box_check_atoms_are_too_close(geo, sb)
 
     call symmetries_init(sb%symm, geo, sb%dim, sb%periodic_dim, sb%rlattice)
 
