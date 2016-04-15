@@ -707,7 +707,7 @@ contains
           if (mesh%sb%nonorthogonal) x(1:dim) = matmul(mesh%sb%rlattice_primitive(1:dim,1:dim), x(1:dim))
         end if
         
-        print *,i, x(:)
+!         print *,i, x(:)
 !         write (99,*)  x(:)
          
 ! NB: these masses are applied on the cartesian directions. Should add a check for non-orthogonal axes

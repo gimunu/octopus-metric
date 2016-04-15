@@ -65,9 +65,10 @@ contains
     vec2(1:dim)=sb%rlattice_primitive(1:dim, 2)
     !get the angle between the primitive vectors
     theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
-    print *, "vec1(1:dim)", vec1(1:dim)
-    print *, "vec1(1:dim)", vec2(1:dim)
-    print *, theta
+
+!     print *, "vec1(1:dim)", vec1(1:dim)
+!     print *, "vec1(1:dim)", vec2(1:dim)
+!     print *, theta
     
 
     if (theta < M_PI*M_HALF) then
@@ -93,9 +94,9 @@ contains
     vec2(1:dim)=sb%rlattice_primitive(1:dim, 3)
     !get the angle between the primitive vectors
     theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
-    print *, vec1(1:dim)
-    print *, vec2(1:dim)
-    print *, theta
+!     print *, vec1(1:dim)
+!     print *, vec2(1:dim)
+!     print *, theta
 
     if (theta < M_PI*M_HALF) then
       this%stargeneral%narms = this%stargeneral%narms + 1
@@ -110,9 +111,9 @@ contains
     vec2(1:dim)=sb%rlattice_primitive(1:dim, 1)
     !get the angle between the primitive vectors
     theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
-    print *, vec1(1:dim)
-    print *, vec2(1:dim)
-    print *, theta
+!     print *, vec1(1:dim)
+!     print *, vec2(1:dim)
+!     print *, theta
 
     if (theta < M_PI*M_HALF) then
       this%stargeneral%narms = this%stargeneral%narms + 1
@@ -123,9 +124,9 @@ contains
     end if
     !if theta == pi/2 we do not need additional arms
 
-    do idim = 1, this%stargeneral%narms
-      print *, idim, "stargeneral%arms = ", this%stargeneral%arms(idim, 1:dim)
-    end do
+!     do idim = 1, this%stargeneral%narms
+!       print *, idim, "stargeneral%arms = ", this%stargeneral%arms(idim, 1:dim)
+!     end do
       
       
     POP_SUB(stencil_stargeneral_get_arms)      
