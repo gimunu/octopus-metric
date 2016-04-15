@@ -225,6 +225,7 @@ contains
       end do
       
       this%np_part = is
+     
 
       SAFE_ALLOCATE(this%map(1:this%np_part))
       SAFE_ALLOCATE(xtmp(1:this%np_part, 0:sb%dim))
@@ -240,7 +241,15 @@ contains
           this%map(is) = ip
           xtmp(is, 0) = sqrt(r2)
           xtmp(is, 1:sb%dim) = xx(1:sb%dim)
+          write (667,*)  mesh%x(ip, 1:sb%dim), xtmp(is, 0)
+          
          end do
+      end do
+      print *, this%np_part
+      print *, center(1:sb%dim)
+
+      do icell = 1, periodic_copy_num(pp)
+        write (666, *) icell,  center_copies(1:sb%dim, icell)
       end do
 
       SAFE_DEALLOCATE_A(center_copies)
@@ -271,6 +280,9 @@ contains
         exit
       end if
     end do
+    
+    print *, "overlap?? ", this%overlap
+    
     
     SAFE_DEALLOCATE_A(order)
     SAFE_DEALLOCATE_A(xtmp)

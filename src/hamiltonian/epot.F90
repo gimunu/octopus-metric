@@ -65,7 +65,10 @@ module epot_m
   use unit_m
   use unit_system_m
   use varinfo_m
-
+  
+  !debug
+    use io_function_m
+  
   implicit none
 
   private
@@ -661,6 +664,8 @@ contains
     type(profile_t), save :: epot_reduce
     type(ps_t), pointer :: ps
     
+    integer :: ierr
+    
     call profiling_in(epot_generate_prof, "EPOT_GENERATE")
     PUSH_SUB(epot_generate)
 
@@ -709,6 +714,11 @@ contains
       end if
     end do
 
+
+    call dio_function_output(io_function_fill_how("VTK"), &
+                                ".", "vpsl",  mesh, vpsl, unit_one, ierr)
+
+
     ! reduce over atoms if required
     if(geo%atoms_dist%parallel) then
       call profiling_in(epot_reduce, "EPOT_REDUCE")
@@ -738,10 +748,22 @@ contains
       else
         SAFE_ALLOCATE(tmp(1:gr%mesh%np_part))
         if(poisson_solver_is_iterative(ep%poisson_solver)) tmp(1:mesh%np) = M_ZERO
+        call dio_function_output(io_function_fill_how("VTK"), &
+                                    ".", "density",  mesh, density, unit_one, ierr)
+        
         call dpoisson_solve(ep%poisson_solver, tmp, density)
         forall(ip = 1:mesh%np) vpsl(ip) = vpsl(ip) + tmp(ip)
+        
+        call dio_function_output(io_function_fill_how("VTK"), &
+                                    ".", "tmp",  mesh, tmp, unit_one, ierr)
+        
         SAFE_DEALLOCATE_A(tmp)
       end if
+
+
+      call dio_function_output(io_function_fill_how("VTK"), &
+                                  ".", "vpsl2",  mesh, vpsl, unit_one, ierr)
+
 
     end if
     SAFE_DEALLOCATE_A(density)
@@ -825,6 +847,8 @@ contains
     type(submesh_t)  :: sphere
     type(profile_t), save :: prof
     logical :: cmplxscl
+    
+    integer :: ierr
 
     PUSH_SUB(epot_local_potential)
     call profiling_in(prof, "EPOT_LOCAL")
@@ -849,6 +873,7 @@ contains
 
       if(local_potential_has_density(der%mesh%sb, geo%atom(iatom))) then
         SAFE_ALLOCATE(rho(1:der%mesh%np))
+        print *, "WE HAVE DENSITY!!!+++!"
 
         if (cmplxscl) then
           SAFE_ALLOCATE(Imrho(1:der%mesh%np))
@@ -857,6 +882,9 @@ contains
           call species_get_density(geo%atom(iatom)%species, geo%atom(iatom)%x, der%mesh, rho)
         end if
 
+        call dio_function_output(io_function_fill_how("VTK"), &
+                                    ".", "rho",  der%mesh, rho, unit_one, ierr)
+                                    
         if(present(density)) then
           forall(ip = 1:der%mesh%np) density(ip) = density(ip) + rho(ip)
           if(cmplxscl) then
@@ -909,6 +937,7 @@ contains
 
         radius = double_grid_get_rmax(dgrid, geo%atom(iatom)%species, der%mesh) + der%mesh%spacing(1)
 
+        print *, "submesh vpsl0"
         call submesh_init(sphere, der%mesh%sb, der%mesh, geo%atom(iatom)%x, radius)
         SAFE_ALLOCATE(vl(1:sphere%np))
 
@@ -916,10 +945,14 @@ contains
 
         ! Cannot be written (correctly) as a vector expression since for periodic systems,
         ! there can be values ip, jp such that sphere%map(ip) == sphere%map(jp).
+!         vpsl = M_ZERO
         do ip = 1, sphere%np
           vpsl(sphere%map(ip)) = vpsl(sphere%map(ip)) + vl(ip)
         end do
-
+        call dio_function_output(io_function_fill_how("VTK"), &
+                                    ".", "vpsl0",  der%mesh, vpsl, unit_one, ierr)
+    
+        
         SAFE_DEALLOCATE_A(vl)
         ASSERT(.not.cmplxscl)
         call submesh_end(sphere)
