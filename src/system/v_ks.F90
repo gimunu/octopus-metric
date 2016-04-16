@@ -1139,12 +1139,6 @@ contains
 
     ASSERT(associated(ks%hartree_solver))
 
-!     if (.true.) then
-!       message(1) = ' Skipping Hartree!!'
-!       call messages_warning(1)
-!       return
-!     end if
-
     if(.not. ks%gr%have_fine_mesh) then
       pot => hm%vhartree
       if (hm%cmplxscl%space) then 
