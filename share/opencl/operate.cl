@@ -16,7 +16,7 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
  02110-1301, USA.
 
- $Id: operate.cl 14564 2015-09-13 19:26:50Z xavier $
+ $Id: operate.cl 14837 2015-11-27 18:40:50Z xavier $
 */
 
 #include <cl_global.h>
@@ -51,8 +51,7 @@ __kernel void operate(const int nn,
   
 }
 
-__kernel void operate_map(const int nn,
-		 	  const int np,
+__kernel void operate_map(const int np,
 			  __global int const * restrict ri,
 			  __global int const * restrict map,
 			  __constant double * restrict weights,
@@ -61,18 +60,27 @@ __kernel void operate_map(const int nn,
 #ifdef SHARED_MEM
 			  , __local int * indexl
 #endif
+#ifdef INDIRECT
+			  , __global int * restrict indirect
+#endif			  
 			  ){
 
   const int ist = get_global_id(0);
   const int nst = get_global_size(0);
-  const int ip  = get_global_id(1);
+  const int ipd = get_global_id(1);
   const int lip = get_local_id(1);
+    
+#ifdef INDIRECT
+  const int ip  = indirect[ipd];
+#else
+#define ip ipd
+#endif
 
 #ifdef SHARED_MEM
-  __local int * index = indexl + nn*lip;
+  __local int * index = indexl + STENCIL_SIZE*lip;
 
-  if(ip < np){
-    for(int j = ist; j < nn; j += nst){
+  if(ipd < np){
+    for(int j = ist; j < STENCIL_SIZE; j += nst){
       index[j] = ri[map[ip] + j];
     }
   }
@@ -81,8 +89,8 @@ __kernel void operate_map(const int nn,
 
 #define INDEX(j) index[(j)]
 #endif
-
-  if(ip < np) {
+  
+  if(ipd < np) {
 
 #ifndef SHARED_MEM
     const int mip = map[ip];
@@ -94,13 +102,13 @@ __kernel void operate_map(const int nn,
     double a0 = (double) (0.0);
     double a1 = (double) (0.0);
     
-    for(int j = 0; j < nn - 2 + 1; j += 2){
+    for(int j = 0; j < STENCIL_SIZE - 2 + 1; j += 2){
       a0 += weights[j    ]*fi[((INDEX(j    ) + ip)<<ldfi) + ist];
       a1 += weights[j + 1]*fi[((INDEX(j + 1) + ip)<<ldfi) + ist];
     }
     
-    // if nn is odd, we still have to do the last iteration
-    if(nn & 1) a0 += weights[nn - 1]*fi[((INDEX(nn - 1) + ip)<<ldfi) + ist];
+    // if STENCIL_SIZE is odd, we still have to do the last iteration
+    if(STENCIL_SIZE & 1) a0 += weights[STENCIL_SIZE - 1]*fi[((INDEX(STENCIL_SIZE - 1) + ip)<<ldfi) + ist];
     
     fo[(ip<<ldfo) + ist] = a0 + a1;
     

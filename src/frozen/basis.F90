@@ -1,13 +1,13 @@
 #include "global.h"
 
-module basis_m
+module basis_oct_m
 
-  use global_m
-  use json_m
-  use kinds_m
-  use messages_m
-  use profiling_m
-  use space_m
+  use global_oct_m
+  use json_oct_m
+  use kinds_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use space_oct_m
   
   implicit none
 
@@ -474,7 +474,7 @@ contains
         call basis_pos_rot( x(idx), x(jdx), this%rot%r(kdx))
       end do
     end do
-    if(this%trn%do) x = x + this%trn%r
+    if(this%trn%do) x(1:this%trn%n) = x(1:this%trn%n) + this%trn%r
 
   end subroutine basis_to_external_1
 
@@ -523,7 +523,7 @@ contains
     POP_SUB(basis_end)
   end subroutine basis_end
 
-end module basis_m
+end module basis_oct_m
 
 !! Local Variables:
 !! mode: f90

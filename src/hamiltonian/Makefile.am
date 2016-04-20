@@ -17,7 +17,7 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: Makefile.am 14444 2015-07-16 19:30:14Z cborca $
+## $Id: Makefile.am 15263 2016-04-08 22:26:03Z xavier $
 
 noinst_LIBRARIES = libhamiltonian.a
 
@@ -44,11 +44,11 @@ libhamiltonian_a_SOURCES =         \
 	xc.F90                     \
 	ion_interaction.F90        \
 	hirshfeld.F90              \
+	libvdwxc.F90               \
 	vdw_ts.F90                 \
-	vdw_ts_low.c
-#       boundaries.F90             \
-#       boundaries_abs.F90         \
-#       boundaries_ecs.F90
+	vdw_ts_low.c               \
+	boundary_op.F90            \
+	oct_exchange.F90
 
 noinst_HEADERS =                      \
 	lasers_inc.F90                \
@@ -62,7 +62,8 @@ noinst_HEADERS =                      \
 	functionals_list.F90          \
 	vxc_inc.F90                   \
 	fxc_inc.F90                   \
-	kxc_inc.F90
+	kxc_inc.F90                   \
+	oct_exchange_inc.F90
 
 include $(srcdir)/../common-rules.make
 
@@ -77,7 +78,7 @@ kb_projector.o : kb_projector.F90 kb_projector_inc.F90 species_pot.o
 hgh_projector.o : hgh_projector.F90 hgh_projector_inc.F90 species_pot.o 
 projector.o : projector.F90 projector_inc.F90 rkb_projector.o kb_projector.o hgh_projector.o species_pot.o
 epot.o : epot.F90 projector.o lasers.o species_pot.o gauge_field.o kick.o ion_interaction.o
-hamiltonian.o : hamiltonian.F90 hamiltonian_inc.F90 lasers.o projector.o epot.o gauge_field.o hamiltonian_base.o pcm.o scdm.o functionals.o
+hamiltonian.o : hamiltonian.F90 hamiltonian_inc.F90 lasers.o projector.o epot.o gauge_field.o hamiltonian_base.o pcm.o scdm.o functionals.o boundary_op.o oct_exchange.o
 scf_tol.o : scf_tol.F90 
 hamiltonian_base.o : hamiltonian_base.F90 hamiltonian_base_inc.F90 projector.o epot.o projector_matrix.o xc.o
 born_charges.o : born_charges.F90
@@ -87,11 +88,11 @@ kick.o : kick.F90
 energy.o : energy.F90
 pcm.o : pcm.F90
 scdm.o : scdm.F90 scdm_inc.F90 xc.o
-functionals.o : functionals.F90 
-xc.o : xc.F90 kxc_inc.F90 fxc_inc.F90 vxc_inc.F90 functionals.o 
+functionals.o : functionals.F90 libvdwxc.o
+xc.o : xc.F90 kxc_inc.F90 fxc_inc.F90 vxc_inc.F90 functionals.o
 ion_interaction.o : ion_interaction.F90
 hirshfeld.o : hirshfeld.F90 species_pot.o
+libvdwxc.o : libvdwxc.F90
 vdw_ts.o : vdw_ts.F90 hirshfeld.o
-#boundaries_abs.o : boundaries_abs.F90 
-#boundaries_ecs.o : boundaries_ecs.F90 
-#boundaries.o : boundaries.F90 boundaries_ecs.o boundaries_abs.o
+boundary_op.o : boundary_op.F90
+oct_exchange.o : oct_exchange_inc.F90 xc.o

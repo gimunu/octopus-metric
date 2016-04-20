@@ -15,39 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: states_calc_inc.F90 14551 2015-09-08 03:49:38Z xavier $
-
-!> ---------------------------------------------------------
-!! This routine transforms the orbitals of state "st", according
-!! to the transformation matrix "uu".
-!!
-!! Each row of u contains the coefficients of the new orbitals
-!! in terms of the old ones.
-!! ---------------------------------------------------------
-subroutine X(states_rotate)(mesh, st, stin, uu)
-  type(mesh_t),      intent(in)    :: mesh
-  type(states_t),    intent(inout) :: st
-  type(states_t),    intent(in)    :: stin
-  R_TYPE,            intent(in)    :: uu(:, :) !< (nst, nst)
-  
-  integer :: ik
-  
-  PUSH_SUB(X(states_rotate))
-
-  if(st%parallel_in_states) &
-    call messages_not_implemented("states_rotate parallel in states")
-  ! FIXME: use pblas_gemm for parallel in states, like in subspace_inc.F90
-
-  ASSERT(associated(st%X(dontusepsi)))
-  ASSERT(associated(stin%X(dontusepsi)))
-  
-  do ik = st%d%kpt%start, st%d%kpt%end
-    call lalg_gemm(mesh%np_part*st%d%dim, st%nst, stin%nst, R_TOTYPE(M_ONE), stin%X(dontusepsi)(:, :, 1:stin%nst, ik), &
-      transpose(uu(:, :)), R_TOTYPE(M_ZERO), st%X(dontusepsi)(:, :, :, ik))
-  end do
-  
-  POP_SUB(X(states_rotate))
-end subroutine X(states_rotate)
+!! $Id: states_calc_inc.F90 15014 2016-01-08 21:16:46Z xavier $
 
 ! ---------------------------------------------------------
 !> Orthonormalizes nst orbitals in mesh (honours state parallelization).
@@ -128,9 +96,11 @@ contains
   ! -----------------------------------------------------------------------------------------------
   subroutine cholesky_parallel()
 
+    R_TYPE, allocatable :: psi(:, :, :)
+    integer             :: psi_block(1:2), total_np
 #ifdef HAVE_SCALAPACK
     integer             :: info, nbl, nrow, ncol
-    integer             :: psi_block(1:2), total_np, psi_desc(BLACS_DLEN), ss_desc(BLACS_DLEN)
+    integer             :: psi_desc(BLACS_DLEN), ss_desc(BLACS_DLEN)
 #endif
 
     PUSH_SUB(X(states_orthogonalization_full).cholesky_parallel)
@@ -150,20 +120,23 @@ contains
     end if
 #endif
 
+    call states_parallel_blacs_blocksize(st, mesh, psi_block, total_np)
 
-#ifdef HAVE_SCALAPACK
-    call states_blacs_blocksize(st, mesh, psi_block, total_np)
+    SAFE_ALLOCATE(psi(1:mesh%np_part, 1:st%d%dim, st%st_start:st%st_end))
 
-    ASSERT(associated(st%X(dontusepsi)))
+    call states_get_state(st, mesh, ik, psi)
+    
     ! We need to set to zero some extra parts of the array
     if(st%d%dim == 1) then
-     st%X(dontusepsi)(mesh%np + 1:psi_block(1), 1:st%d%dim, st%st_start:st%st_end, ik) = M_ZERO
+     psi(mesh%np + 1:psi_block(1), 1:st%d%dim, st%st_start:st%st_end) = M_ZERO
     else
-     st%X(dontusepsi)(mesh%np + 1:mesh%np_part, 1:st%d%dim, st%st_start:st%st_end, ik) = M_ZERO
+     psi(mesh%np + 1:mesh%np_part, 1:st%d%dim, st%st_start:st%st_end) = M_ZERO
     end if
 
+#ifdef HAVE_SCALAPACK
+    
     call descinit(psi_desc(1), total_np, st%nst, psi_block(1), psi_block(2), 0, 0, st%dom_st_proc_grid%context, &
-      st%d%dim*ubound(st%X(dontusepsi), dim = 1), info)
+      st%d%dim*ubound(psi, dim = 1), info)
 
     if(info /= 0) then
       write(message(1),'(3a,i6)') "descinit for psi failed in ", TOSTRING(X(states_orthogonalization_full)), &
@@ -188,7 +161,7 @@ contains
     ss = M_ZERO
 
     call pblas_herk(uplo = 'U', trans = 'C', n = st%nst, k = total_np, &
-      alpha = R_TOTYPE(mesh%vol_pp(1)), a = st%X(dontusepsi)(1, 1, st%st_start, ik), ia = 1, ja = 1, desca = psi_desc(1), &
+      alpha = R_TOTYPE(mesh%vol_pp(1)), a = psi(1, 1, st%st_start), ia = 1, ja = 1, desca = psi_desc(1), &
       beta = R_TOTYPE(M_ZERO), c = ss(1, 1), ic = 1, jc = 1, descc = ss_desc(1))
 
     ! calculate the Cholesky decomposition
@@ -202,13 +175,16 @@ contains
 
     call pblas_trsm(side = 'R', uplo = 'U', transa = 'N', diag = 'N', m = total_np, n = st%nst, &
       alpha = R_TOTYPE(M_ONE), a = ss(1, 1), ia = 1, ja = 1, desca = ss_desc(1), &
-      b = st%X(dontusepsi)(1, 1, st%st_start, ik), ib = 1, jb = 1, descb = psi_desc(1))
+      b = psi(1, 1, st%st_start), ib = 1, jb = 1, descb = psi_desc(1))
+
+#endif
 
     call profiling_count_operations(dble(mesh%np)*dble(nst)**2*(R_ADD + R_MUL))
 
     SAFE_DEALLOCATE_A(ss)
-#endif
 
+    call states_set_state(st, mesh, ik, psi)
+    
     POP_SUB(X(states_orthogonalization_full).cholesky_parallel)
   end subroutine cholesky_parallel
 
@@ -218,9 +194,9 @@ contains
 
     integer :: ist, jst, idim
     FLOAT   :: cc
-    R_TYPE, allocatable :: aa(:)
+    R_TYPE, allocatable :: aa(:), psii(:, :), psij(:, :)
     FLOAT,  allocatable :: bb(:)
-
+    
     PUSH_SUB(X(states_orthogonalization_full).mgs)
 
     if(st%parallel_in_states) then
@@ -229,19 +205,22 @@ contains
     end if
 
     SAFE_ALLOCATE(bb(1:nst))
+    SAFE_ALLOCATE(psii(1:mesh%np, 1:st%d%dim))
+    SAFE_ALLOCATE(psij(1:mesh%np, 1:st%d%dim))
 
-    ASSERT(associated(st%X(dontusepsi)))
     ! normalize the initial vectors
     do ist = 1, nst
-      bb(ist) = &
-        TOFLOAT(X(mf_dotp)(mesh, st%d%dim, st%X(dontusepsi)(:, :, ist, ik), st%X(dontusepsi)(:, :, ist, ik), reduce = .false.))
+      call states_get_state(st, mesh, ist, ik, psii)
+      bb(ist) = TOFLOAT(X(mf_dotp)(mesh, st%d%dim, psii, psii, reduce = .false.))
+      call states_set_state(st, mesh, ist, ik, psii)
     end do
 
     if(mesh%parallel_in_domains) call comm_allreduce(mesh%mpi_grp%comm, bb, dim = nst)
 
-    do ist = 1, nst      
+    do ist = 1, nst
+      call states_get_state(st, mesh, ist, ik, psii)
       do idim = 1, st%d%dim
-        call lalg_scal(mesh%np, M_ONE/sqrt(bb(ist)), st%X(dontusepsi)(:, idim, ist, ik))
+        call lalg_scal(mesh%np, M_ONE/sqrt(bb(ist)), psii(:, idim))
       end do
     end do
 
@@ -250,28 +229,40 @@ contains
     SAFE_ALLOCATE(aa(1:nst))
 
     do ist = 1, nst
+
+      call states_get_state(st, mesh, ist, ik, psii)
+      
       ! calculate the projections
       do jst = 1, ist - 1
-        aa(jst) = X(mf_dotp)(mesh, st%d%dim, st%X(dontusepsi)(:, :, jst, ik), st%X(dontusepsi)(:, :, ist, ik), reduce = .false.)
+        call states_get_state(st, mesh, jst, ik, psij)
+        aa(jst) = X(mf_dotp)(mesh, st%d%dim, psij, psii, reduce = .false.)
       end do
 
       if(mesh%parallel_in_domains .and. ist > 1) call comm_allreduce(mesh%mpi_grp%comm, aa, dim = ist - 1)
 
       ! subtract the projections
       do jst = 1, ist - 1
+        call states_get_state(st, mesh, jst, ik, psij)
         do idim = 1, st%d%dim
-          call lalg_axpy(mesh%np, -aa(jst), st%X(dontusepsi)(:, idim, jst, ik), st%X(dontusepsi)(:, idim, ist, ik))
+          call lalg_axpy(mesh%np, -aa(jst), psij(:, idim), psii(:, idim))
         end do
       end do
 
       ! renormalize
-      cc = TOFLOAT(X(mf_dotp)(mesh, st%d%dim, st%X(dontusepsi)(:, :, ist, ik), st%X(dontusepsi)(:, :, ist, ik)))
+      cc = TOFLOAT(X(mf_dotp)(mesh, st%d%dim, psii, psii))
+
       do idim = 1, st%d%dim
-        call lalg_scal(mesh%np, M_ONE/sqrt(cc), st%X(dontusepsi)(:, idim, ist, ik))
+        call lalg_scal(mesh%np, M_ONE/sqrt(cc), psii(:, idim))
       end do
+
+      call states_set_state(st, mesh, ist, ik, psii)
+      
     end do
 
+    SAFE_DEALLOCATE_A(psii)
+    SAFE_DEALLOCATE_A(psij)
     SAFE_DEALLOCATE_A(aa)
+
     POP_SUB(X(states_orthogonalization_full).mgs)
   end subroutine mgs
 
@@ -300,16 +291,7 @@ subroutine X(states_trsm)(st, mesh, ik, ss)
   PUSH_SUB(X(states_trsm))
   call profiling_in(prof, "STATES_TRSM")
 
-  if(associated(st%X(dontusepsi)) .and. .not. states_are_packed(st) .and. .not. st%parallel_in_states) then
-
-    do idim = 1, st%d%dim
-      ! multiply by the inverse of ss
-      call blas_trsm('R', 'U', 'N', 'N', mesh%np, st%nst, R_TOTYPE(M_ONE), ss(1, 1), st%nst, &
-        st%X(dontusepsi)(1, idim, 1, ik), ubound(st%X(dontusepsi), dim = 1)*st%d%dim)
-
-    end do
-
-  else if(.not. (states_are_packed(st) .and. opencl_is_enabled())) then
+  if(.not. (states_are_packed(st) .and. opencl_is_enabled())) then
 
 #ifdef R_TREAL  
     block_size = max(40, hardware%l2%size/(2*8*st%nst))
@@ -326,7 +308,7 @@ subroutine X(states_trsm)(st, mesh, ik, ss)
         call batch_get_points(st%group%psib(ib, ik), sp, sp + size - 1, psicopy)
       end do
 
-      if(st%parallel_in_states) call states_gather(st, (/st%d%dim, size/), psicopy)      
+      if(st%parallel_in_states) call states_parallel_gather(st, (/st%d%dim, size/), psicopy)      
       
       do idim = 1, st%d%dim
         
@@ -368,15 +350,15 @@ subroutine X(states_trsm)(st, mesh, ik, ss)
         call batch_get_points(st%group%psib(ib, ik), sp, sp + size - 1, psicopy_buffer, st%nst)
       end do
 
-#if defined(HAVE_CLAMDBLAS) && defined(R_TREAL)
+#if defined(HAVE_CLBLAS) && defined(R_TREAL)
 
-      call aX(clAmdblas,trsmEx)(order = clAmdBlasColumnMajor, side = clAmdBlasLeft, &
-        uplo = clAmdBlasUpper, transA = clAmdBlasTrans, diag = clAmdBlasNonUnit, &
+      call aX(clblas,trsmEx)(order = clblasColumnMajor, side = clblasLeft, &
+        uplo = clblasUpper, transA = clblasTrans, diag = clblasNonUnit, &
         M = int(st%nst, 8), N = int(size, 8), alpha = R_TOTYPE(M_ONE), &
         A = ss_buffer%mem, offA = 0_8, lda = int(ubound(ss, dim = 1), 8), &
         B = psicopy_buffer%mem, offB = 0_8, ldb = int(st%nst, 8), &
         CommandQueue = opencl%command_queue, status = ierr)
-      if(ierr /= clAmdBlasSuccess) call clblas_print_error(ierr, 'clAmdBlasXtrsmEx')
+      if(ierr /= clblasSuccess) call clblas_print_error(ierr, 'clblasXtrsmEx')
 
 #else
 
@@ -897,6 +879,7 @@ subroutine X(states_matrix)(mesh, st1, st2, aa)
   R_TYPE,         intent(out) :: aa(:, :, :)
 
   integer :: ii, jj, dim, ik
+  R_TYPE, allocatable :: psi1(:, :), psi2(:, :)
 #if defined(HAVE_MPI)
   R_TYPE, allocatable :: phi2(:, :)
   integer :: kk, ll, ist
@@ -907,65 +890,82 @@ subroutine X(states_matrix)(mesh, st1, st2, aa)
   PUSH_SUB(X(states_matrix))
 
   dim = st1%d%dim
-  ASSERT(associated(st1%X(dontusepsi)))
-  ASSERT(associated(st2%X(dontusepsi)))
+
+  SAFE_ALLOCATE(psi1(1:mesh%np, 1:st1%d%dim))
+  SAFE_ALLOCATE(psi2(1:mesh%np, 1:st1%d%dim))
 
   do ik = st1%d%kpt%start, st1%d%kpt%end
 
-  if(st1%parallel_in_states) then
+    if(st1%parallel_in_states) then
 
 #if defined(HAVE_MPI)
-    call MPI_Barrier(st1%mpi_grp%comm, mpi_err)
-    ! Each process sends the states in st2 to the rest of the processes.
-    do ist = st1%st_start, st1%st_end
-      do jj = 0, st1%mpi_grp%size - 1
-        if(st1%mpi_grp%rank /= jj) then
-          call MPI_Isend(st2%X(dontusepsi)(1, 1, ist, ik), st1%d%dim*mesh%np, R_MPITYPE, &
-            jj, ist, st1%mpi_grp%comm, request, mpi_err)
-        end if
-      end do
-    end do
-
-    ! Processes are received, and then the matrix elements are calculated.
-    SAFE_ALLOCATE(phi2(1:mesh%np, 1:st1%d%dim))
-    do jj = 1, st2%nst
-      ll = st1%node(jj)
-      if(ll /= st1%mpi_grp%rank) then
-        call MPI_Irecv(phi2(1, 1), st1%d%dim*mesh%np, R_MPITYPE, ll, jj, st1%mpi_grp%comm, request, mpi_err)
-        call MPI_Wait(request, status, mpi_err)
-      else
-        phi2(:, :) = st2%X(dontusepsi)(:, :, jj, ik)
-      end if
+      call MPI_Barrier(st1%mpi_grp%comm, mpi_err)
+      ! Each process sends the states in st2 to the rest of the processes.
       do ist = st1%st_start, st1%st_end
-        aa(ist, jj, ik) = X(mf_dotp)(mesh, dim, st1%X(dontusepsi)(:, :, ist, ik), phi2(:, :))
+        call states_get_state(st2, mesh, ist, ik, psi2)
+        do jj = 0, st1%mpi_grp%size - 1
+          if(st1%mpi_grp%rank /= jj) then
+            call MPI_Isend(psi2(1, 1), st1%d%dim*mesh%np, R_MPITYPE, jj, ist, st1%mpi_grp%comm, request, mpi_err)
+          end if
+        end do
       end do
-    end do
-    SAFE_DEALLOCATE_A(phi2)
 
-    ! Each process holds some lines of the matrix. So it is broadcasted (All processes
-    ! should get the whole matrix)
-    call MPI_Barrier(st1%mpi_grp%comm, mpi_err)
-    do ii = 1, st1%nst
-      kk = st1%node(ii)
+      ! Processes are received, and then the matrix elements are calculated.
+      SAFE_ALLOCATE(phi2(1:mesh%np, 1:st1%d%dim))
       do jj = 1, st2%nst
-        call MPI_Bcast(aa(ii, jj, ik), 1, R_MPITYPE, kk, st1%mpi_grp%comm, mpi_err)
+
+        ll = st1%node(jj)
+
+        if(ll /= st1%mpi_grp%rank) then
+          call MPI_Irecv(phi2(1, 1), st1%d%dim*mesh%np, R_MPITYPE, ll, jj, st1%mpi_grp%comm, request, mpi_err)
+          call MPI_Wait(request, status, mpi_err)
+        else
+          call states_get_state(st2, mesh, jj, ik, phi2)
+        end if
+
+        do ist = st1%st_start, st1%st_end
+          call states_get_state(st1, mesh, ist, ik, psi1)
+          aa(ist, jj, ik) = X(mf_dotp)(mesh, dim, psi1, phi2)
+        end do
+
       end do
-    end do
+      SAFE_DEALLOCATE_A(phi2)
+
+      ! Each process holds some lines of the matrix. So it is broadcasted (All processes
+      ! should get the whole matrix)
+      call MPI_Barrier(st1%mpi_grp%comm, mpi_err)
+      do ii = 1, st1%nst
+        kk = st1%node(ii)
+        do jj = 1, st2%nst
+          call MPI_Bcast(aa(ii, jj, ik), 1, R_MPITYPE, kk, st1%mpi_grp%comm, mpi_err)
+        end do
+      end do
 #else
-    write(message(1), '(a)') 'Internal error at Xstates_matrix'
-    call messages_fatal(1)
+      write(message(1), '(a)') 'Internal error at Xstates_matrix'
+      call messages_fatal(1)
 #endif
 
-  else
+    else
 
-    do ii = st1%st_start, st1%st_end
-      do jj = st2%st_start, st2%st_end
-        aa(ii, jj, ik) = X(mf_dotp)(mesh, dim, st1%X(dontusepsi)(:, :, ii, ik), st2%X(dontusepsi)(:, :, jj, ik))
+      do ii = st1%st_start, st1%st_end
+
+        call states_get_state(st1, mesh, ii, ik, psi1)
+
+        do jj = st2%st_start, st2%st_end
+
+          call states_get_state(st2, mesh, jj, ik, psi2)
+
+          aa(ii, jj, ik) = X(mf_dotp)(mesh, dim, psi1, psi2)
+
+        end do
       end do
-    end do
-  end if
+
+    end if
 
   end do
+
+  SAFE_DEALLOCATE_A(psi1)
+  SAFE_DEALLOCATE_A(psi2)    
 
   POP_SUB(X(states_matrix))
 end subroutine X(states_matrix)
@@ -1089,7 +1089,7 @@ end subroutine X(states_calc_orth_test)
 
 ! ---------------------------------------------------------
 
-subroutine X(states_rotate_in_place)(mesh, st, uu, ik)
+subroutine X(states_rotate)(mesh, st, uu, ik)
   type(mesh_t),      intent(in)    :: mesh
   type(states_t),    intent(inout) :: st
   R_TYPE,            intent(in)    :: uu(:, :)
@@ -1106,17 +1106,13 @@ subroutine X(states_rotate_in_place)(mesh, st, uu, ik)
 #endif
   type(profile_t), save :: prof
 
-  PUSH_SUB(X(states_rotate_in_place))
-  
+  PUSH_SUB(X(states_rotate))
+
   call profiling_in(prof, "STATES_ROTATE")
 
-  if(associated(st%X(dontusepsi)) .and. .not. states_are_packed(st) .and. .not. st%parallel_in_states) then
-
-    call batch_init(psib, st%d%dim, 1, st%nst, st%X(dontusepsi)(:, :, :, ik))
-    call X(mesh_batch_rotate)(mesh, psib, uu)
-    call batch_end(psib)
-
-  else if(.not. states_are_packed(st) .or. .not. opencl_is_enabled()) then
+  ASSERT(R_TYPE_VAL == states_type(st))
+  
+  if(.not. states_are_packed(st) .or. .not. opencl_is_enabled()) then
     
 #ifdef R_TREAL  
     block_size = max(40, hardware%l2%size/(2*8*st%nst))
@@ -1134,7 +1130,7 @@ subroutine X(states_rotate_in_place)(mesh, st, uu, ik)
         call batch_get_points(st%group%psib(ib, ik), sp, sp + size - 1, psicopy)
       end do
 
-      call states_gather(st, (/st%d%dim, size/), psicopy)
+      call states_parallel_gather(st, (/st%d%dim, size/), psicopy)
       
       do idim = 1, st%d%dim
         
@@ -1175,15 +1171,15 @@ subroutine X(states_rotate_in_place)(mesh, st, uu, ik)
         call batch_get_points(st%group%psib(ib, ik), sp, sp + size - 1, psicopy_buffer, st%nst)
       end do
 
-#ifdef HAVE_CLAMDBLAS
+#ifdef HAVE_CLBLAS
 
-      call aX(clAmdblas,gemmEx)(order = clAmdBlasColumnMajor, transA = clAmdBlasTrans, transB = clAmdBlasNoTrans, &
+      call aX(clblas,gemmEx)(order = clblasColumnMajor, transA = clblasTrans, transB = clblasNoTrans, &
         M = int(st%nst, 8), N = int(size, 8), K = int(st%nst, 8), alpha = R_TOTYPE(M_ONE), &
         A = uu_buffer%mem, offA = 0_8, lda = int(ubound(uu, dim = 1), 8), &
         B = psicopy_buffer%mem, offB = 0_8, ldb = int(st%nst, 8), beta = R_TOTYPE(M_ZERO), &
         C = psinew_buffer%mem, offC = 0_8, ldc = int(st%nst, 8), &
         CommandQueue = opencl%command_queue, status = ierr)
-      if(ierr /= clAmdBlasSuccess) call clblas_print_error(ierr, 'clAmdBlasXgemmEx')
+      if(ierr /= clblasSuccess) call clblas_print_error(ierr, 'clblasXgemmEx')
       
 #else
 
@@ -1224,17 +1220,16 @@ subroutine X(states_rotate_in_place)(mesh, st, uu, ik)
   end if
 
   call profiling_out(prof)
-  POP_SUB(X(states_rotate_in_place))
-end subroutine X(states_rotate_in_place)
+  POP_SUB(X(states_rotate))
+end subroutine X(states_rotate)
 
 ! ---------------------------------------------------------
 
-subroutine X(states_calc_overlap)(st, mesh, ik, overlap, psi2)
+subroutine X(states_calc_overlap)(st, mesh, ik, overlap)
   type(states_t),    intent(inout) :: st
   type(mesh_t),      intent(in)    :: mesh
   integer,           intent(in)    :: ik
   R_TYPE,            intent(out)   :: overlap(:, :)
-  R_TYPE, optional,  intent(in)    :: psi2(:, :, :) !< if present it calculates <psi2|psi>
 
   integer :: ip, ib, jb, block_size, sp, size
 #ifndef R_TREAL
@@ -1244,7 +1239,7 @@ subroutine X(states_calc_overlap)(st, mesh, ik, overlap, psi2)
   type(profile_t), save :: prof
   FLOAT :: vol
   R_TYPE, allocatable :: psi(:, :, :)
-#ifdef HAVE_CLAMDBLAS
+#ifdef HAVE_CLBLAS
   integer :: ierr
   type(opencl_mem_t) :: psi_buffer, overlap_buffer
 #endif
@@ -1253,25 +1248,7 @@ subroutine X(states_calc_overlap)(st, mesh, ik, overlap, psi2)
 
   call profiling_in(prof, "STATES_OVERLAP")
 
-  if(associated(st%X(dontusepsi)) .and. .not. states_are_packed(st) .and. .not. st%parallel_in_states) then
-
-    call batch_init(psib, st%d%dim, 1, st%nst, st%X(dontusepsi)(:, :, :, ik))
-
-    if(.not. present(psi2)) then
-
-      call X(mesh_batch_dotp_self)(mesh, psib, overlap)
-
-    else
-
-      call batch_init(psi2b, st%d%dim, 1, st%nst, psi2)
-      call X(mesh_batch_dotp_matrix)(mesh, psi2b, psib, overlap)
-      call batch_end(psi2b)
-
-    end if
-
-    call batch_end(psib)
-
-  else if(.not. states_are_packed(st) .or. .not. opencl_is_enabled()) then
+  if(.not. states_are_packed(st) .or. .not. opencl_is_enabled()) then
 
 #ifdef R_TREAL  
     block_size = max(80, hardware%l2%size/(8*st%nst))
@@ -1290,7 +1267,7 @@ subroutine X(states_calc_overlap)(st, mesh, ik, overlap, psi2)
         call batch_get_points(st%group%psib(ib, ik), sp, sp + size - 1, psi)
       end do
 
-      if(st%parallel_in_states) call states_gather(st, (/st%d%dim, size/), psi)
+      if(st%parallel_in_states) call states_parallel_gather(st, (/st%d%dim, size/), psi)
       
       if(mesh%use_curvilinear) then
         do ip = sp, sp + size - 1
@@ -1322,7 +1299,7 @@ subroutine X(states_calc_overlap)(st, mesh, ik, overlap, psi2)
 
     SAFE_DEALLOCATE_A(psi)
 
-#ifdef HAVE_CLAMDBLAS
+#ifdef HAVE_CLBLAS
 
   else if(opencl_is_enabled()) then
 
@@ -1347,18 +1324,18 @@ subroutine X(states_calc_overlap)(st, mesh, ik, overlap, psi2)
       end do
 
 #ifdef R_TREAL
-      call clAmdblasDsyrkEx &
+      call clblasDsyrkEx &
 #else
-      call clAmdblasZherkEx &
+      call clblasZherkEx &
 #endif
-      (order = clAmdBlasColumnMajor, uplo = clAmdBlasUpper, transA = clAmdBlasNoTrans, &
+      (order = clblasColumnMajor, uplo = clblasUpper, transA = clblasNoTrans, &
         N = int(st%nst, 8), K = int(size, 8), &
         alpha = real(mesh%volume_element, 8), &
         A = psi_buffer%mem, offA = 0_8, lda = int(st%nst, 8), &
         beta = 1.0_8, &
         C = overlap_buffer%mem, offC = 0_8, ldc = int(st%nst, 8), &
         CommandQueue = opencl%command_queue, status = ierr)
-      if(ierr /= clAmdBlasSuccess) call clblas_print_error(ierr, 'clAmdBlasDsyrkEx/clAmdBlasZherkEx')
+      if(ierr /= clblasSuccess) call clblas_print_error(ierr, 'clblasDsyrkEx/clblasZherkEx')
 
     end do
 
@@ -1388,8 +1365,6 @@ subroutine X(states_calc_overlap)(st, mesh, ik, overlap, psi2)
 
   else
 
-    ASSERT(.not. present(psi2))
-
     do ib = st%group%block_start, st%group%block_end
       do jb = ib, st%group%block_end
         if(ib == jb) then
@@ -1416,31 +1391,6 @@ subroutine X(states_calc_overlap)(st, mesh, ik, overlap, psi2)
 
   POP_SUB(X(states_calc_overlap))
 end subroutine X(states_calc_overlap)
-
-!-------------------------------------------------
-
-subroutine X(states_gather)(st, dims, psi)
-  type(states_t), intent(in)    :: st
-  integer,        intent(in)    :: dims(2)
-  R_TYPE,         intent(out)   :: psi(:, :, :)
-
-  type(profile_t), save :: prof
-
-  !no PUSH_SUB, called too often
-  
-  call profiling_in(prof, 'STATES_GATHER')
-
-  if(st%parallel_in_states) then
-    !this should really be an allgather, we use the simpler allreduce
-    !for the moment to get it working
-    psi(1:st%st_start - 1, 1:dims(1), 1:dims(2)) = CNST(0.0)
-    psi(st%st_end + 1:st%nst, 1:dims(1), 1:dims(2)) = CNST(0.0)
-    call comm_allreduce(st%mpi_grp%comm, psi)
-  end if
-
-  call profiling_out(prof)
-  
-end subroutine X(states_gather)
 
 !! Local Variables:
 !! mode: f90

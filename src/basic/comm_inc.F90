@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: comm_inc.F90 12469 2014-09-03 20:47:00Z xavier $
+!! $Id: comm_inc.F90 14821 2015-11-25 00:28:03Z xavier $
 
 ! -----------------------------------------------------------------------------
 
@@ -185,6 +185,35 @@ subroutine X(comm_allreduce_4)(comm, aa)
   POP_SUB(X(comm_allreduce_4))
 end subroutine X(comm_allreduce_4)
 
+! -----------------------------------------------------------------------------
+
+subroutine X(comm_allreduce_5)(comm, aa)
+  integer,                          intent(in)    :: comm
+  R_TYPE,                           intent(inout) :: aa(:, :, :, :, :)
+
+  integer :: dim_(1:5)
+  R_TYPE, allocatable :: aac(:, :, :, :, :)
+  
+  PUSH_SUB(X(comm_allreduce_5))
+
+  dim_ = ubound(aa)
+
+#if defined(HAVE_MPI2)
+
+    call MPI_Allreduce(MPI_IN_PLACE, aa(1, 1, 1, 1, 1), product(dim_), R_MPITYPE, MPI_SUM, comm, mpi_err)
+
+#elif defined(HAVE_MPI)
+    SAFE_ALLOCATE(aac(1:dim_(1), 1:dim_(2), 1:dim_(3), 1:dim_(4), 1:dim_(5)))
+    aac(1:dim_(1), 1:dim_(2), 1:dim_(3), 1:dim_(4), 1:dim_(5)) = &
+      aa(1:dim_(1), 1:dim_(2), 1:dim_(3), 1:dim_(4), 1:dim_(5))
+    call MPI_Allreduce(aac(1, 1, 1, 1, 1), aa(1, 1, 1, 1, 1), product(dim_), &
+      R_MPITYPE, MPI_SUM, comm, mpi_err)
+#endif
+
+  SAFE_DEALLOCATE_A(aac)
+
+  POP_SUB(X(comm_allreduce_5))
+end subroutine X(comm_allreduce_5)
 
 ! -----------------------------------------------------------------------------
 

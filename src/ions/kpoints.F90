@@ -15,22 +15,22 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: kpoints.F90 14699 2015-10-23 13:46:17Z jrfsousa $
+!! $Id: kpoints.F90 15204 2016-03-19 13:17:02Z xavier $
 
 #include "global.h"
   
-module kpoints_m
-  use geometry_m
-  use global_m
-  use loct_m
-  use messages_m
-  use parser_m
-  use profiling_m
-  use sort_om
-  use symmetries_m
-  use unit_m
-  use unit_system_m
-  use utils_m
+module kpoints_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use loct_oct_m
+  use messages_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use sort_oct_m
+  use symmetries_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use utils_oct_m
   
   implicit none
   
@@ -51,7 +51,8 @@ module kpoints_m
     kpoints_get_symmetry_ops,     &
     kpoints_get_num_symmetry_ops, &
     kpoints_kweight_denominator,  &
-    kpoints_grid_generate
+    kpoints_grid_generate,        &
+    kpoints_have_zero_weight_path
 
   type kpoints_grid_t
     FLOAT, pointer :: point(:, :)
@@ -308,7 +309,8 @@ contains
       !% zone, and the actual number of <i>k</i>-points is usually
       !% reduced exploiting the symmetries of the system.  By default
       !% the grid will always include the <math>\Gamma</math>-point. An optional
-      !% second row can specify a shift in the <i>k</i>-points (between 0 and 1).
+      !% second row can specify a shift in the <i>k</i>-points (between 0.0 and 1.0),
+      !% in units of the Brillouin zone divided by the number in the first row.
       !% The number of columns should be equal to <tt>Dimensions</tt>,
       !% but the grid and shift numbers should be 1 and zero in finite directions.
       !%
@@ -687,6 +689,7 @@ contains
     integer :: ii, jj, divisor, ik, idir, npoints
     integer, allocatable :: ix(:), lk123_(:,:),idx(:)
     FLOAT, allocatable :: nrm(:), shell(:), coords(:, :)
+    logical, allocatable :: move_to_minus_half(:)
 
     PUSH_SUB(kpoints_grid_generate)
    
@@ -694,6 +697,7 @@ contains
 
     npoints = product(naxis(1:dim))
 
+    SAFE_ALLOCATE(move_to_minus_half(1:dim))
     SAFE_ALLOCATE(ix(1:dim))
     
     if (present(lk123)) then
@@ -701,6 +705,8 @@ contains
       SAFE_ALLOCATE(idx(1:npoints))
     end if
 
+    move_to_minus_half(1:dim) = .true.
+    
     do ii = 0, npoints - 1
 
       ik = npoints - ii
@@ -718,9 +724,14 @@ contains
           kpoints(idir, ik) = kpoints(idir, ik) - dx(idir)
         end if
   
-        !bring back point to first Brillouin zone, except for points at 1/2 that would be sent to -1/2
-        if ( kpoints(idir,ik) /= M_HALF )  kpoints(idir, ik) = mod(kpoints(idir, ik) + M_HALF, M_ONE) - M_HALF
-
+        !bring back point to first Brillouin zone, except for points at 1/2
+        if ( abs(kpoints(idir, ik) - CNST(0.5)) > CNST(1e-14) )  then
+          kpoints(idir, ik) = mod(kpoints(idir, ik) + M_HALF, M_ONE) - M_HALF
+        else
+          ! alternate the assignation of points at 1/2 and -1/2 such that the total sum of k-points is zero.
+          if(move_to_minus_half(idir)) kpoints(idir,ik) = -CNST(0.5)
+          move_to_minus_half(idir) = .not. move_to_minus_half(idir)
+        end if
 
       end do
       if (present(lk123)) then
@@ -776,6 +787,7 @@ contains
     SAFE_DEALLOCATE_A(nrm)
     SAFE_DEALLOCATE_A(shell)
     SAFE_DEALLOCATE_A(coords)
+    SAFE_DEALLOCATE_A(move_to_minus_half)
 
     POP_SUB(kpoints_grid_generate)
   end subroutine kpoints_grid_generate
@@ -1002,8 +1014,10 @@ contains
       kpoints_kweight_denominator = this%full%npoints
     else
       kpoints_kweight_denominator = 0
+      ! NB largest reasonable value is: # k-points x 48. from space-group symmetries
       do denom = 1, 100000
-        if(all(abs(int(this%full%weight(1:nik-nik_skip)*denom)-this%full%weight(1:nik-nik_skip)*denom) < CNST(10)*M_EPSILON)) then
+        if(all(abs(int(this%full%weight(1:nik-nik_skip)*denom + CNST(10)*M_EPSILON) - &
+          this%full%weight(1:nik-nik_skip)*denom) < CNST(100)*M_EPSILON)) then
           kpoints_kweight_denominator = denom
           exit
         end if
@@ -1013,7 +1027,19 @@ contains
     POP_SUB(kpoints_kweight_denominator)
   end function kpoints_kweight_denominator
 
-end module kpoints_m
+  !--------------------------------------------------------
+  logical  pure function kpoints_have_zero_weight_path(this) result(have_zerow)
+    type(kpoints_t),    intent(in) :: this
+    
+    if (this%nik_skip > 0) then
+      have_zerow = .true.
+    else 
+      have_zerow = .false.
+    end if
+
+  end function kpoints_have_zero_weight_path
+
+end module kpoints_oct_m
 
 !! Local Variables:
 !! mode: f90

@@ -15,62 +15,62 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: scf.F90 14715 2015-10-30 05:54:23Z xavier $
+!! $Id: scf.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module scf_m
-  use batch_m
-  use batch_ops_m
-  use berry_m
-  use density_m
-  use eigensolver_m
-  use energy_calc_m
-  use forces_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use output_m
-  use hamiltonian_m
-  use io_m
-  use io_function_m
-  use kpoints_m
-  use lcao_m
-  use loct_m
-  use magnetic_m
-  use math_m
-  use mesh_m
-  use mesh_batch_m
-  use mesh_function_m
-  use messages_m
-  use mix_m
-  use modelmb_exchange_syms_m
-  use mpi_m
-  use mpi_lib_m
-  use multigrid_m
-  use multicomm_m
-  use parser_m
-  use partial_charges_m
-  use preconditioners_m
-  use profiling_m
-  use restart_m
-  use scdm_m
-  use simul_box_m
-  use smear_m
-  use species_m
-  use states_m
-  use states_calc_m
-  use states_dim_m
-  use states_group_m
-  use states_io_m
-  use states_restart_m
-  use types_m
-  use unit_m
-  use unit_system_m
-  use utils_m
-  use v_ks_m
-  use varinfo_m
-  use xc_functl_m
+module scf_oct_m
+  use batch_oct_m
+  use batch_ops_oct_m
+  use berry_oct_m
+  use density_oct_m
+  use eigensolver_oct_m
+  use energy_calc_oct_m
+  use forces_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use output_oct_m
+  use hamiltonian_oct_m
+  use io_oct_m
+  use io_function_oct_m
+  use kpoints_oct_m
+  use lcao_oct_m
+  use loct_oct_m
+  use magnetic_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_batch_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mix_oct_m
+  use modelmb_exchange_syms_oct_m
+  use mpi_oct_m
+  use mpi_lib_oct_m
+  use multigrid_oct_m
+  use multicomm_oct_m
+  use parser_oct_m
+  use partial_charges_oct_m
+  use preconditioners_oct_m
+  use profiling_oct_m
+  use restart_oct_m
+  use scdm_oct_m
+  use simul_box_oct_m
+  use smear_oct_m
+  use species_oct_m
+  use states_oct_m
+  use states_calc_oct_m
+  use states_dim_oct_m
+  use states_group_oct_m
+  use states_io_oct_m
+  use states_restart_oct_m
+  use types_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use utils_oct_m
+  use v_ks_oct_m
+  use varinfo_oct_m
+  use xc_functl_oct_m
   use XC_F90(lib_m)
 
   implicit none
@@ -284,6 +284,13 @@ contains
       call messages_fatal()
     end if
 
+    if (scf%mix_field == OPTION__MIXFIELD__POTENTIAL .and. hm%pcm%run_pcm) then
+      call messages_write('Input: You have selected to mix the potential.', new_line = .true.)
+      call messages_write('       This might produce convergence problems for solvated systems.', new_line = .true.)
+      call messages_write('       Mix the Density instead.')
+      call messages_warning()
+    end if
+
     if(scf%mix_field == OPTION__MIXFIELD__DENSITY &
       .and. iand(hm%xc_family, XC_FAMILY_OEP + XC_FAMILY_MGGA + XC_FAMILY_HYB_MGGA) /= 0) then
 
@@ -302,6 +309,9 @@ contains
       scf%mixdim1 = gr%mesh%np
     case(OPTION__MIXFIELD__DENSITY)
       scf%mixdim1 = gr%fine%mesh%np
+    case(OPTION__MIXFIELD__STATES)
+      ! we do not really need the mixer, except for the value of the mixing coefficient
+      scf%mixdim1 = 1
     end select
 
     if(scf%mix_field /= OPTION__MIXFIELD__NONE) then
@@ -315,7 +325,7 @@ contains
     ! now the eigensolver stuff
     call eigensolver_init(scf%eigens, gr, st)
 
-    if(scf%eigens%es_type == RS_MG .or. preconditioner_is_multigrid(scf%eigens%pre)) then
+    if(preconditioner_is_multigrid(scf%eigens%pre)) then
       if(.not. associated(gr%mgrid)) then
         SAFE_ALLOCATE(gr%mgrid)
         call multigrid_init(gr%mgrid, geo, gr%cv,gr%mesh, gr%der, gr%stencil)
@@ -617,12 +627,8 @@ contains
       call profiling_in(prof, "SCF_CYCLE")
 
       ! reset scdm flag
-       scdm_is_local = .false.
-       ! this is stupid should be done in init and isnt even neede, except for .cube files
-       scdm_geo = geo
- 
-
-
+      scdm_is_local = .false.
+       
       ! this initialization seems redundant but avoids improper optimization at -O3 by PGI 7 on chum,
       ! which would cause a failure of testsuite/linear_response/04-vib_modes.03-vib_modes_fd.inp
       scf%eigens%converged = 0
@@ -1267,7 +1273,7 @@ contains
 
   end subroutine scf_run
 
-end module scf_m
+end module scf_oct_m
 
 
 !! Local Variables:

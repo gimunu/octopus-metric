@@ -15,46 +15,46 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: hamiltonian_base.F90 14633 2015-10-04 05:40:47Z xavier $
+!! $Id: hamiltonian_base.F90 15257 2016-04-07 15:23:21Z xavier $
 
 #include "global.h"
 
-module hamiltonian_base_m
-  use batch_m
-  use blas_m
+module hamiltonian_base_oct_m
+  use batch_oct_m
+  use blas_oct_m
 #ifdef HAVE_OPENCL
   use cl
 #endif
-  use comm_m
-  use derivatives_m
-  use epot_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hardware_m
-  use io_m
-  use kb_projector_m
-  use lalg_basic_m
-  use math_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use nl_operator_m
-  use opencl_m
-  use octcl_kernel_m
-  use parser_m
-  use profiling_m
-  use projector_m
-  use projector_matrix_m
-  use ps_m
-  use simul_box_m
-  use species_m
-  use states_m
-  use states_dim_m
-  use submesh_m
-  use types_m
-  use varinfo_m
+  use comm_oct_m
+  use derivatives_oct_m
+  use epot_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hardware_oct_m
+  use io_oct_m
+  use kb_projector_oct_m
+  use lalg_basic_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use nl_operator_oct_m
+  use opencl_oct_m
+  use octcl_kernel_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use projector_oct_m
+  use projector_matrix_oct_m
+  use ps_oct_m
+  use simul_box_oct_m
+  use species_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use submesh_oct_m
+  use types_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -209,11 +209,11 @@ contains
 
   ! ---------------------------------------------------------------
   !> This function ensures that the corresponding field is allocated.
-  subroutine hamiltonian_base_allocate(this, mesh, field, cmplxscl)
+  subroutine hamiltonian_base_allocate(this, mesh, field, complex_potential)
     type(hamiltonian_base_t), intent(inout) :: this
     type(mesh_t),             intent(in)    :: mesh
     integer,                  intent(in)    :: field
-    logical,                  intent(in)    :: cmplxscl
+    logical,                  intent(in)    :: complex_potential
 
     PUSH_SUB(hamiltonian_base_allocate)
 
@@ -221,7 +221,7 @@ contains
       if(.not. allocated(this%potential)) then
         SAFE_ALLOCATE(this%potential(1:mesh%np, 1:this%nspin))
         this%potential = M_ZERO
-        if(cmplxscl) then
+        if(complex_potential) then
           SAFE_ALLOCATE(this%Impotential(1:mesh%np, 1:this%nspin))
           this%Impotential = M_ZERO
         end if
@@ -418,7 +418,7 @@ contains
     SAFE_DEALLOCATE_A(atom_counted)
     SAFE_DEALLOCATE_A(region_count)
 
-    if(in_debug_mode) then
+    if(debug%info) then
       call messages_write('The atoms can be separated in ')
       call messages_write(nregion)
       call messages_write(' non-overlapping groups.')
@@ -681,7 +681,7 @@ contains
 #include "complex.F90"
 #include "hamiltonian_base_inc.F90"
 
-end module hamiltonian_base_m
+end module hamiltonian_base_oct_m
 
 !! Local Variables:
 !! mode: f90

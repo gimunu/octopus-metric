@@ -15,56 +15,57 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: epot.F90 14497 2015-08-04 06:10:32Z xavier $
+!! $Id: epot.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module epot_m
-  use atom_m
-  use comm_m
-  use derivatives_m
-  use double_grid_m
-  use gauge_field_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use index_m
-  use io_m
-  use ion_interaction_m
-  use kick_m
-  use lalg_adv_m
-  use lalg_basic_m
-  use lasers_m
-  use linear_response_m
-  use loct_math_m
-  use logrid_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use multigrid_m
-  use parser_m
-  use periodic_copy_m
-  use poisson_m
-  use poisson_cutoff_m
-  use profiling_m
-  use projector_m
-  use ps_m
-  use simul_box_m
-  use species_m
-  use species_pot_m
-  use splines_m
-  use spline_filter_m
-  use ssys_external_m
-  use ssys_hamiltonian_m
-  use ssys_ionic_m
-  use states_m
-  use states_dim_m
-  use submesh_m
-  use tdfunction_m
-  use unit_m
-  use unit_system_m
-  use varinfo_m
+module epot_oct_m
+  use atom_oct_m
+  use base_hamiltonian_oct_m
+  use base_potential_oct_m
+  use base_term_oct_m
+  use comm_oct_m
+  use derivatives_oct_m
+  use double_grid_oct_m
+  use gauge_field_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use index_oct_m
+  use io_oct_m
+  use ion_interaction_oct_m
+  use kick_oct_m
+  use lalg_adv_oct_m
+  use lalg_basic_oct_m
+  use lasers_oct_m
+  use linear_response_oct_m
+  use loct_math_oct_m
+  use logrid_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use multigrid_oct_m
+  use parser_oct_m
+  use periodic_copy_oct_m
+  use poisson_oct_m
+  use poisson_cutoff_oct_m
+  use profiling_oct_m
+  use projector_oct_m
+  use ps_oct_m
+  use simul_box_oct_m
+  use species_oct_m
+  use species_pot_oct_m
+  use splines_oct_m
+  use spline_filter_oct_m
+  use ssys_external_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use submesh_oct_m
+  use tdfunction_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -93,7 +94,7 @@ module epot_m
     FLOAT, pointer :: Vclassical(:) !< We use it to store the potential of the classical charges
 
     ! Subsystems external potential.
-    type(ssys_external_t), pointer :: subsys_external
+    type(base_potential_t), pointer :: subsys_external
 
     ! Ions
     FLOAT,             pointer :: vpsl(:)       !< the local part of the pseudopotentials
@@ -155,10 +156,10 @@ contains
     integer,                            intent(in)    :: ispin
     integer,                            intent(in)    :: nik
     logical,                            intent(in)    :: cmplxscl
-    type(ssys_hamiltonian_t), optional, intent(in)    :: subsys_hm
+    type(base_hamiltonian_t), optional, intent(in)    :: subsys_hm
 
 
-    type(ssys_ionic_t), pointer :: subsys_ionic
+    type(base_term_t), pointer :: subsys_ionic
     integer :: ispec, ip, idir, ia, gauge_2d, ierr
     type(block_t) :: blk
     FLOAT, allocatable :: grx(:)
@@ -197,14 +198,14 @@ contains
     nullify(ep%subsys_external)
     if(present(subsys_hm))then
       ASSERT(.not.cmplxscl)
-      call ssys_hamiltonian_get(subsys_hm, ep%subsys_external)
+      call base_hamiltonian_get(subsys_hm, "external", ep%subsys_external)
       ASSERT(associated(ep%subsys_external))
     end if
 
     ! Local part of the pseudopotentials
     if(associated(ep%subsys_external))then
       ! Sets the pointer to the subsystems total potential.
-      call ssys_external_get(ep%subsys_external, ep%vpsl)
+      call base_potential_get(ep%subsys_external, ep%vpsl)
       ASSERT(associated(ep%vpsl))
     else
       SAFE_ALLOCATE(ep%vpsl(1:gr%mesh%np))
@@ -538,7 +539,7 @@ contains
     nullify(subsys_ionic)
     if(present(subsys_hm))then
       ASSERT(.not.cmplxscl)
-      call ssys_hamiltonian_get(subsys_hm, subsys_ionic)
+      call base_hamiltonian_get(subsys_hm, "ionic", subsys_ionic)
       ASSERT(associated(subsys_ionic))
       call ion_interaction_add_subsys_ionic(ep%ion_interaction, subsys_ionic)
       nullify(subsys_ionic)
@@ -651,8 +652,7 @@ contains
     type(mesh_t),      pointer :: mesh
     type(simul_box_t), pointer :: sb
     type(profile_t), save :: epot_generate_prof
-    type(ssys_external_t), pointer :: live_external
-    FLOAT, dimension(:),   pointer :: vpsl
+    FLOAT, dimension(:), pointer :: vpsl
     FLOAT,    allocatable :: density(:)
     FLOAT,    allocatable :: Imdensity(:)
     FLOAT,    allocatable :: tmp(:)
@@ -675,16 +675,14 @@ contains
     end if
 
     ! Local part
-    nullify(live_external, vpsl)
+    nullify(vpsl)
     if(associated(ep%subsys_external))then
       ! Sets the vpsl pointer to the "live" part of the subsystem potential.
-      call ssys_external_get(ep%subsys_external, "live", live_external)
-      ASSERT(associated(live_external))
-      call ssys_external_get(live_external, vpsl)
+      call base_potential_gets(ep%subsys_external, "live", vpsl)
       ASSERT(associated(vpsl))
     else
       ! Sets the vpsl pointer to the total potential.
-      vpsl=>ep%vpsl
+      vpsl => ep%vpsl
     end if
     vpsl = M_ZERO
     if(associated(ep%Imvpsl)) ep%Imvpsl = M_ZERO
@@ -786,10 +784,8 @@ contains
     if (ep%classical_pot > 0)   vpsl(1:mesh%np) = vpsl(1:mesh%np) + ep%Vclassical(1:mesh%np)
     if (associated(ep%e_field) .and. sb%periodic_dim < sb%dim) vpsl(1:mesh%np) = vpsl(1:mesh%np) + ep%v_static(1:mesh%np)
 
-    if(associated(ep%subsys_external))then
-      ! Calculates the total potential by summing all the subsystem contributions.
-      call ssys_external_calc(ep%subsys_external)
-    end if
+    ! Calculates the total potential by summing all the subsystem contributions.
+    if(associated(ep%subsys_external)) call ssys_external_calc(ep%subsys_external)
   
     POP_SUB(epot_generate)
     call profiling_out(epot_generate_prof)
@@ -1052,7 +1048,7 @@ contains
     POP_SUB(epot_global_force)
   end subroutine epot_global_force
 
-end module epot_m
+end module epot_oct_m
 
 !! Local Variables:
 !! mode: f90

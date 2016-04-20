@@ -15,48 +15,52 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: v_ks.F90 14721 2015-10-31 05:24:30Z xavier $
+!! $Id: v_ks.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
  
-module v_ks_m
-  use berry_m
-  use current_m
-  use density_m
-  use derivatives_m
-  use energy_m
-  use energy_calc_m
-  use epot_m 
-  use geometry_m
-  use global_m
-  use grid_m
-  use hamiltonian_m
-  use index_m
-  use io_function_m
-  use lalg_basic_m
-  use magnetic_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use multicomm_m
-  use multigrid_m
-  use parser_m
-  use poisson_m
-  use profiling_m
-  use pcm_m 
-  use simul_box_m
-  use ssys_hamiltonian_m
-  use ssys_tnadd_m
-  use states_m
-  use states_dim_m
-  use unit_system_m
-  use varinfo_m
-  use vdw_ts_m
-  use xc_m
+module v_ks_oct_m
+  use base_hamiltonian_oct_m
+  use base_states_oct_m
+  use berry_oct_m
+  use current_oct_m
+  use density_oct_m
+  use derivatives_oct_m
+  use energy_oct_m
+  use energy_calc_oct_m
+  use epot_oct_m 
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hamiltonian_oct_m
+  use index_oct_m
+  use io_function_oct_m
+  use lalg_basic_oct_m
+  use libvdwxc_oct_m
+  use magnetic_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use multicomm_oct_m
+  use multigrid_oct_m
+  use parser_oct_m
+  use poisson_oct_m
+  use profiling_oct_m
+  use pcm_oct_m 
+  use simul_box_oct_m
+  use ssys_states_oct_m
+  use ssys_tnadd_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use states_parallel_oct_m
+  use unit_system_oct_m
+  use varinfo_oct_m
+  use vdw_ts_oct_m
+  use xc_oct_m
   use XC_F90(lib_m)
-  use xc_functl_m
-  use xc_ks_inversion_m
-  use xc_OEP_m
+  use xc_functl_oct_m
+  use xc_ks_inversion_oct_m
+  use xc_OEP_oct_m
 
   implicit none
 
@@ -128,6 +132,7 @@ module v_ks_m
     integer                  :: vdw_correction
     logical                  :: vdw_self_consistent
     type(vdw_ts_t)           :: vdw_ts
+    logical                  :: include_td_field
   end type v_ks_t
 
 contains
@@ -247,17 +252,21 @@ contains
     call messages_obsolete_variable('CFunctional', 'XCFunctional')
 
     ! initialize XC modules
-    
+
     ! This is a bit ugly, theory_level might not be Hartree-Fock now
     ! but it might become Hartree-Fock later. This is safe because it
     ! becomes Hartree-Fock in the cases where the functional is hybrid
     ! and the ifs inside check for both conditions.
     call xc_init(ks%xc, gr%mesh%sb%dim, gr%mesh%sb%periodic_dim, st%qtot, &
       x_id, c_id, xk_id, ck_id, hartree_fock = ks%theory_level == HARTREE_FOCK)
-    
+
+    if(iand(ks%xc%family, XC_FAMILY_LIBVDWXC) /= 0) then
+      call libvdwxc_set_geometry(ks%xc%functional(FUNC_C,1)%libvdwxc, gr%mesh)
+    end if
+
     ks%xc_family = ks%xc%family
-    
-    if(.not. parsed_theory_level) then 
+
+    if(.not. parsed_theory_level) then
       default = KOHN_SHAM_DFT
 
       ! the functional is a hybrid, use Hartree-Fock as theory level by default
@@ -528,16 +537,17 @@ contains
 
     ks%calc%geo => geo
     
-    if(in_debug_mode) then
+    if(debug%info) then
       write(message(1), '(a)') 'Debug: Calculating Kohn-Sham potential.'
       call messages_info(1)
     end if
 
+    ks%calc%time_present = present(time) 
+
     if(present(time)) then
       ks%calc%time = time
-    else
-      ks%calc%time = M_ZERO
     end if
+
     ks%calc%calc_energy = optional_default(calc_energy, .true.)
 
     nullify(ks%calc%vberry)
@@ -609,7 +619,7 @@ contains
     if(ks%theory_level == HARTREE .or. ks%theory_level == HARTREE_FOCK .or. ks%theory_level == RDMFT) then
       SAFE_ALLOCATE(ks%calc%hf_st)
       call states_copy(ks%calc%hf_st, st)
-      if(st%parallel_in_states) call states_remote_access_start(ks%calc%hf_st)
+      if(st%parallel_in_states) call states_parallel_remote_access_start(ks%calc%hf_st)
     end if
 
     ! Calculate the vector potential induced by the electronic current.
@@ -635,9 +645,11 @@ contains
 
       ! get density taking into account non-linear core corrections
       SAFE_ALLOCATE(ks%calc%density(1:ks%gr%fine%mesh%np, 1:st%d%nspin))
+      !> Calculate the subsystems total density.
+      if(associated(st%subsys_st)) call ssys_states_acc(st%subsys_st)
       if (.not. cmplxscl) then
         call states_total_density(st, ks%gr%fine%mesh, ks%calc%density)
-      else 
+      else
         SAFE_ALLOCATE(ks%calc%Imdensity(1:ks%gr%fine%mesh%np, 1:st%d%nspin))
         call states_total_density(st, ks%gr%fine%mesh, ks%calc%density, ks%calc%Imdensity)
       end if
@@ -795,6 +807,7 @@ contains
       CMPLX :: ctmp
       integer :: ispin
       FLOAT, allocatable :: vvdw(:)
+      FLOAT, dimension(:,:), pointer :: density
       
       PUSH_SUB(v_ks_calc_start.v_a_xc)
       call profiling_in(prof, "XC")
@@ -924,6 +937,13 @@ contains
 
         if(hm%d%ispin == SPINORS .and. cmplxscl) &
           call messages_not_implemented('Complex Scaling with SPINORS')
+        nullify(density)
+        if(associated(st%subsys_st))then
+          call base_states_get(st%subsys_st, density)
+          ASSERT(associated(density))
+        else
+          density => st%rho
+        end if
         do ispin = 1, hm%d%nspin
           if(ispin <= 2) then
             factor = M_ONE
@@ -932,7 +952,7 @@ contains
           end if
           if (.not. cmplxscl) then
             ks%calc%energy%intnvxc = ks%calc%energy%intnvxc + &
-              factor*dmf_dotp(ks%gr%fine%mesh, st%rho(:, ispin), ks%calc%vxc(:, ispin))
+              factor*dmf_dotp(ks%gr%fine%mesh, density(:, ispin), ks%calc%vxc(:, ispin))
           else
             ctmp = factor * zmf_dotp(ks%gr%fine%mesh, st%zrho%Re(:, ispin) + M_zI * st%zrho%Im(:, ispin), &
               ks%calc%vxc(:, ispin) + M_zI * ks%calc%Imvxc(:, ispin), dotu = .true.)
@@ -953,8 +973,9 @@ contains
     type(v_ks_t), target, intent(inout) :: ks
     type(hamiltonian_t),  intent(inout) :: hm
 
-    type(ssys_tnadd_t), pointer :: subsys_tnadd
-    integer                     :: ip, ispin
+    type(base_hamiltonian_t), pointer :: subsys_tnadd
+    FLOAT, dimension(:,:),    pointer :: potential
+    integer                           :: ip, ispin
 
     PUSH_SUB(v_ks_calc_finish)
 
@@ -1054,15 +1075,6 @@ contains
         forall(ip = 1:ks%gr%mesh%np) hm%vhxc(ip, 1) = hm%vhxc(ip, 1) + hm%vberry(ip, 1)
       end if
 
-      ! Calculate subsystem kinetic non-additive term
-      nullify(subsys_tnadd)
-      if(associated(hm%subsys_hm))then
-        call ssys_hamiltonian_get(hm%subsys_hm, subsys_tnadd)
-        ASSERT(associated(subsys_tnadd))
-        call ssys_tnadd_calc(subsys_tnadd)
-        nullify(subsys_tnadd)
-      end if
-
       if(hm%d%ispin > UNPOLARIZED) then
         forall(ip = 1:ks%gr%mesh%np) hm%vhxc(ip, 2) = hm%vxc(ip, 2) + hm%vhartree(ip)
         if (hm%cmplxscl%space) forall(ip = 1:ks%gr%mesh%np) hm%Imvhxc(ip, 2) = hm%Imvxc(ip, 2) + hm%Imvhartree(ip)
@@ -1071,6 +1083,24 @@ contains
         end if
       end if
       
+      ! Calculate and add subsystem kinetic non-additive term
+      nullify(subsys_tnadd, potential)
+      if(associated(hm%subsys_hm))then
+        call base_hamiltonian_get(hm%subsys_hm, "tnadd", subsys_tnadd)
+        ASSERT(associated(subsys_tnadd))
+        call ssys_tnadd_calc(subsys_tnadd)
+        call base_hamiltonian_get(subsys_tnadd, nspin=ispin)
+        ASSERT(ispin<=hm%d%ispin)
+        call base_hamiltonian_get(subsys_tnadd, potential)
+        ASSERT(associated(potential))
+        nullify(subsys_tnadd)
+        forall (ip = 1:ks%gr%mesh%np) hm%vhxc(ip,1) = hm%vhxc(ip,1) + potential(ip,1)
+        if(hm%d%ispin>UNPOLARIZED)then
+          forall (ip = 1:ks%gr%mesh%np) hm%vhxc(ip,2) = hm%vhxc(ip,2) + potential(ip,ispin)
+        end if
+        nullify(potential)
+      end if
+
       if(hm%d%ispin == SPINORS) then
         forall(ispin = 3:4, ip = 1:ks%gr%mesh%np) hm%vhxc(ip, ispin) = hm%vxc(ip, ispin)
         if (hm%cmplxscl%space) forall(ispin = 3:4, ip = 1:ks%gr%mesh%np) hm%Imvhxc(ip, ispin) = hm%Imvxc(ip, ispin)
@@ -1081,7 +1111,7 @@ contains
 
         ! swap the states object
         if(associated(hm%hf_st)) then
-          if(hm%hf_st%parallel_in_states) call states_remote_access_stop(hm%hf_st)
+          if(hm%hf_st%parallel_in_states) call states_parallel_remote_access_stop(hm%hf_st)
           call states_end(hm%hf_st)
           SAFE_DEALLOCATE_P(hm%hf_st)
         end if
@@ -1107,7 +1137,11 @@ contains
       hm%ep%vdw_forces(1:ks%gr%sb%dim, 1:ks%calc%geo%natoms) = CNST(0.0)      
     end if
 
-    call hamiltonian_update(hm, ks%gr%mesh, time = ks%calc%time)
+    if(ks%calc%time_present) then
+      call hamiltonian_update(hm, ks%gr%mesh, time = ks%calc%time)
+    else
+      call hamiltonian_update(hm, ks%gr%mesh)
+    end if
 
     SAFE_DEALLOCATE_P(ks%calc%density)
     SAFE_DEALLOCATE_P(ks%calc%Imdensity)
@@ -1162,10 +1196,9 @@ contains
         call dpoisson_solve(ks%hartree_solver, pot, ks%calc%total_density)
       else
         ! Solve the Poisson equation for the scaled density and coulomb potential
-        call zpoisson_solve(ks%hartree_solver, zpot,&
-          ks%calc%total_density + M_zI * ks%calc%Imtotal_density)
-        pot   =   real(zpot)
-        Impot =  aimag(zpot)
+        call zpoisson_solve(ks%hartree_solver, zpot, ks%calc%total_density + M_zI*ks%calc%Imtotal_density)
+        pot(1:ks%gr%fine%mesh%np) = real(zpot(1:ks%gr%fine%mesh%np))
+        Impot(1:ks%gr%fine%mesh%np) = aimag(zpot(1:ks%gr%fine%mesh%np))
       end if
     else
       ! The calculation was started by v_ks_calc_start.
@@ -1173,18 +1206,16 @@ contains
         call dpoisson_solve_finish(ks%hartree_solver, pot)
       else
         call zpoisson_solve_finish(ks%hartree_solver, zpot)
-        pot   =   real(zpot)
-        Impot =  aimag(zpot)
+        pot(1:ks%gr%fine%mesh%np) = real(zpot(1:ks%gr%fine%mesh%np))
+        Impot(1:ks%gr%fine%mesh%np) =  aimag(zpot(1:ks%gr%fine%mesh%np))
       end if
     end if
 
     !> PCM reaction field due to the electronic density
-    if (hm%pcm%run_pcm) then
+    if (hm%pcm%run_pcm .and. pcm_update(hm%pcm,hm%current_time)) then
     !> Generates the real-space PCM potential due to electrons during the SCF calculation.
-        call v_electrons_cav_li(hm%pcm%v_e, pot, hm%pcm)
-        call pcm_charges(hm%pcm%q_e, hm%pcm%qtot_e, hm%pcm%v_e, hm%pcm%matrix, hm%pcm%n_tesserae) 
-        call pcm_pot_rs( hm%pcm%v_e_rs, hm%pcm%q_e, hm%pcm%tess, hm%pcm%n_tesserae, ks%gr%mesh, hm%pcm%gaussian_width )
-
+        call pcm_calc_pot_rs(hm%pcm, ks%gr%mesh, v_h = pot)
+        
         ! Calculating the PCM term renormalizing the sum of the single-particle energies
         hm%energy%pcm_corr = dmf_dotp( ks%gr%fine%mesh, ks%calc%total_density, hm%pcm%v_e_rs + hm%pcm%v_n_rs )
     end if
@@ -1252,7 +1283,7 @@ contains
     POP_SUB(v_ks_calculate_current)
   end subroutine v_ks_calculate_current
   
-end module v_ks_m
+end module v_ks_oct_m
 
 !! Local Variables:
 !! mode: f90

@@ -1,19 +1,19 @@
 #include "global.h"
 
-module intrpl_m
+module intrpl_oct_m
 
-  use curvilinear_m
-  use domain_m
-  use global_m
-  use grid_m
-  use index_m
-  use kinds_m
-  use mesh_m
-  use messages_m
-  use profiling_m
-  use qshep_m
-  use simulation_m
-  use storage_m
+  use curvilinear_oct_m
+  use domain_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use index_oct_m
+  use kinds_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use qshep_oct_m
+  use simulation_oct_m
+  use storage_oct_m
 
   implicit none
 
@@ -248,12 +248,11 @@ contains
 
     PUSH_SUB(intrpl_in_domain)
 
-    in = .true.
-    if(associated(this%domain))&
-      in = domain_in(this%domain, x)
+    ASSERT(associated(this%domain))
+    in = domain_in(this%domain, x)
     if(in)then
       n = intrpl_nearest_index(this, x)
-      in = ( (0<n) .and. (n<=size(this%intr(1)%vals)) )
+      in = ( (0<n) .and. (n<=this%mesh%np) )
     end if
 
     POP_SUB(intrpl_in_domain)
@@ -272,7 +271,7 @@ contains
 
     dm = this%mesh%sb%dim
     np = intrpl_nearest_index(this, x)
-    tol = 0.51_wp * sqrt(sum(this%mesh%spacing(1:dm)**2))
+    tol = minval(this%mesh%spacing(1:dm))
     dlt = sqrt(sum((x(1:dm)-this%mesh%x(np,1:dm))**2))
     ASSERT(dlt<tol)
     forall(ix=1:this%nint) val(ix) = this%intr(ix)%vals(np)
@@ -377,6 +376,7 @@ contains
     integer :: idx
 
     PUSH_SUB(intrpl_copy)
+
     this%sim => that%sim
     this%mesh => that%mesh
     this%domain => that%domain
@@ -415,7 +415,7 @@ contains
     POP_SUB(intrpl_end)
   end subroutine intrpl_end
 
-end module intrpl_m
+end module intrpl_oct_m
 
 !! Local Variables:
 !! mode: f90

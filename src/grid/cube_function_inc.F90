@@ -16,7 +16,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: cube_function_inc.F90 14459 2015-07-24 07:05:49Z dannert $
+!! $Id: cube_function_inc.F90 15016 2016-01-08 21:44:30Z xavier $
 
 
 ! ---------------------------------------------------------
@@ -48,7 +48,7 @@ subroutine X(cube_function_alloc_rs)(cube, cf, in_device, force_alloc)
         allocated = .true.
         cf%X(rs) => cube%fft%X(rs_data)(1:cube%rs_n(1), 1:cube%rs_n(2), 1:cube%rs_n(3))
       end if
-    case(FFTLIB_CLAMD)
+    case(FFTLIB_OPENCL)
       if(optional_default(in_device, .true.)) then
         allocated = .true.
         cf%in_device_memory = .true.
@@ -86,7 +86,7 @@ subroutine X(cube_function_free_rs)(cube, cf)
            deallocated = .true.
            nullify(cf%X(rs))
         end if
-     case(FFTLIB_CLAMD)
+     case(FFTLIB_OPENCL)
 #ifdef HAVE_OPENCL
         if(cf%in_device_memory) then
            deallocated = .true.

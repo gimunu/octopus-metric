@@ -19,12 +19,12 @@
 
 #include "global.h"
 
-module stencil_stargeneral_m
-  use global_m
-  use messages_m
-  use profiling_m
-  use simul_box_m
-  use stencil_m
+module stencil_stargeneral_oct_m
+  use global_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
+  use stencil_oct_m
 
   private
   public ::                     &
@@ -65,10 +65,6 @@ contains
     vec2(1:dim)=sb%rlattice_primitive(1:dim, 2)
     !get the angle between the primitive vectors
     theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
-
-!     print *, "vec1(1:dim)", vec1(1:dim)
-!     print *, "vec1(1:dim)", vec2(1:dim)
-!     print *, theta
     
 
     if (theta < M_PI*M_HALF) then
@@ -94,9 +90,6 @@ contains
     vec2(1:dim)=sb%rlattice_primitive(1:dim, 3)
     !get the angle between the primitive vectors
     theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
-!     print *, vec1(1:dim)
-!     print *, vec2(1:dim)
-!     print *, theta
 
     if (theta < M_PI*M_HALF) then
       this%stargeneral%narms = this%stargeneral%narms + 1
@@ -111,9 +104,6 @@ contains
     vec2(1:dim)=sb%rlattice_primitive(1:dim, 1)
     !get the angle between the primitive vectors
     theta = acos(dot_product(vec1(1:dim),vec2(1:dim)))
-!     print *, vec1(1:dim)
-!     print *, vec2(1:dim)
-!     print *, theta
 
     if (theta < M_PI*M_HALF) then
       this%stargeneral%narms = this%stargeneral%narms + 1
@@ -124,9 +114,6 @@ contains
     end if
     !if theta == pi/2 we do not need additional arms
 
-!     do idim = 1, this%stargeneral%narms
-!       print *, idim, "stargeneral%arms = ", this%stargeneral%arms(idim, 1:dim)
-!     end do
       
       
     POP_SUB(stencil_stargeneral_get_arms)      
@@ -141,19 +128,12 @@ contains
 
     PUSH_SUB(stencil_stargeneral_size_lapl)
 
-!     n = 2*dim*order + 1
-!     if(dim == 2) n = n + 12
-!     !FCC
-!     if(dim == 3) n = 2*dim*order * 2 + 1
-! !     !HEX
-! !     if(dim == 3) n = 2*dim*order + 2*order + 1
-!     !normal star
+    !normal star
     n = 2*dim*order + 1
 
     ! star general 
     n = n + 2 * order * this%stargeneral%narms 
     
-!     print *, "size = ", n, this%stargeneral%narms 
 
     POP_SUB(stencil_stargeneral_size_lapl)
   end function stencil_stargeneral_size_lapl
@@ -255,18 +235,6 @@ contains
           this%points(1:3, n) = this%stargeneral%arms(i, 1:3)*j
         end do 
       end do
-      
-
-
-!       print *, "(stencil_stargeneral_get_lapl) n = ", n
-!
-!       do i=1, n
-!         print *, i, "this%points(1:3, n) = ", this%points(1:3, i)
-!       end do
-      
-      
-      
-      
 
     end select
 
@@ -334,9 +302,6 @@ contains
       do j = 1, 2*order
         do i = 1, this%stargeneral%narms 
           n = n + 1
-!           if (this%stargeneral%arms(i,1)==0 ) pol(1:3, n) = (/0,j,1/)
-!           if (this%stargeneral%arms(i,2)==0 ) pol(1:3, n) = (/1,0,j/)
-!           if (this%stargeneral%arms(i,3)==0 ) pol(1:3, n) = (/j,1,0/)
 
          ! sum(this%stargeneral%arms(i,1:dim))==0 just checks whether we have a -1 in the arm vector or not
           if (this%stargeneral%arms(i,1)==0) then
@@ -383,15 +348,7 @@ contains
 !         n = n + 1
 !         pol(1:3, n) = (/j, 1, 0/)
 !       end do
-        
-
       
-      
-!       print *, "(stencil_stargeneral_pol_lapl) n = ", n
-!
-!       do i=1, n
-!         print *, i, "pol(1:3, n) = ", pol(1:3, i)
-!       end do
 
     end select
 
@@ -399,7 +356,7 @@ contains
   end subroutine stencil_stargeneral_pol_lapl
 
 
-end module stencil_stargeneral_m
+end module stencil_stargeneral_oct_m
 
 !! Local Variables:
 !! mode: f90

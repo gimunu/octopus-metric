@@ -15,47 +15,49 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: system.F90 14729 2015-11-01 21:21:23Z xavier $
+!! $Id: system.F90 15204 2016-03-19 13:17:02Z xavier $
 
 #include "global.h"
 
-module system_m
-  use calc_mode_par_m
-  use density_m
-  use elf_m
-  use energy_calc_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hamiltonian_m
-  use io_function_m
-  use json_m
-  use mesh_m
-  use messages_m
-  use modelmb_particles_m
-  use mpi_m
-  use multicomm_m
-  use octcl_kernel_m
-  use opencl_m
-  use output_m
-  use parser_m
-  use pcm_m
-  use poisson_m
-  use profiling_m
-  use space_m
-  use species_m
-  use simul_box_m
-  use sort_om
-  use ssys_config_m
-  use ssys_handle_m
-  use ssys_model_m
-  use ssys_states_m
-  use ssys_system_m
-  use states_m
-  use states_dim_m
-  use unit_m
-  use unit_system_m
-  use v_ks_m
+module system_oct_m
+  use base_handle_oct_m
+  use base_model_oct_m
+  use base_states_oct_m
+  use base_system_oct_m
+  use calc_mode_par_oct_m
+  use density_oct_m
+  use elf_oct_m
+  use energy_calc_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hamiltonian_oct_m
+  use io_function_oct_m
+  use json_oct_m
+  use live_config_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use modelmb_particles_oct_m
+  use mpi_oct_m
+  use multicomm_oct_m
+  use octcl_kernel_oct_m
+  use opencl_oct_m
+  use output_oct_m
+  use parser_oct_m
+  use pcm_oct_m
+  use poisson_oct_m
+  use profiling_oct_m
+  use space_oct_m
+  use species_oct_m
+  use simul_box_oct_m
+  use sort_oct_m
+  use ssys_config_oct_m
+  use ssys_handle_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use v_ks_oct_m
 
   implicit none
 
@@ -67,26 +69,23 @@ module system_m
     system_h_setup
 
   type system_t
-    type(space_t)               :: space
-    type(geometry_t)            :: geo
-    type(grid_t),       pointer :: gr    !< the mesh
-    type(states_t),     pointer :: st    !< the states
-    type(ssys_model_t), pointer :: subsys_model !< the Subsystems model pointer.
-    type(v_ks_t)                :: ks    !< the Kohn-Sham potentials
-    type(output_t)              :: outp  !< the output
-    type(multicomm_t)           :: mc    !< index and domain communicators
+    type(space_t)                :: space
+    type(geometry_t)             :: geo
+    type(grid_t),        pointer :: gr    !< the mesh
+    type(states_t),      pointer :: st    !< the states
+    type(base_handle_t), pointer :: subsys_handle !< the Subsystems handle pointer.
+    type(v_ks_t)                 :: ks    !< the Kohn-Sham potentials
+    type(output_t)               :: outp  !< the output
+    type(multicomm_t)            :: mc    !< index and domain communicators
   end type system_t
 
 contains
 
   !----------------------------------------------------------
-  subroutine system_init(sys, subsys_handle, config)
-    type(system_t),                intent(out)   :: sys
-    type(ssys_handle_t), optional, intent(inout) :: subsys_handle
-    type(json_object_t), optional, intent(inout) :: config
+  subroutine system_init(sys)
+    type(system_t), intent(out)   :: sys
 
-    type(ssys_system_t), pointer :: subsys_system
-    type(ssys_states_t), pointer :: subsys_states
+    type(base_states_t), pointer :: subsys_states
 
     type(profile_t), save :: prof
     PUSH_SUB(system_init)
@@ -119,19 +118,14 @@ contains
     call grid_init_stage_2(sys%gr, sys%mc, sys%geo)
     call output_init(sys%outp, sys%gr%sb, sys%st%nst)
 
-    nullify(sys%subsys_model, subsys_system, subsys_states)
-    if(present(subsys_handle).and.present(config))then
-      call ssys_config_parse(config, sys%space%dim, sys%st%d%nspin)
-      call ssys_handle_init(subsys_handle, sys%geo, config)
-      call ssys_handle_start(subsys_handle, sys%gr)
-      call ssys_handle_get(subsys_handle, sys%subsys_model)
-      ASSERT(associated(sys%subsys_model))
-      call ssys_model_get(sys%subsys_model, subsys_system)
-      ASSERT(associated(subsys_system))
-      call ssys_system_get(subsys_system, subsys_states)
+    nullify(sys%subsys_handle, subsys_states)
+    if(ssys_config_use())then
+      SAFE_ALLOCATE(sys%subsys_handle)
+      call subsystems_init(sys%subsys_handle, sys%st, sys%gr, sys%geo, sys%space)
+      call subsystems_get(sys%subsys_handle, subsys_states)
       ASSERT(associated(subsys_states))
       call states_add_substates(sys%st, subsys_states)
-      nullify(subsys_system, subsys_states)
+      nullify(subsys_states)
     end if
 
     call states_densities_init(sys%st, sys%gr, sys%geo)
@@ -170,6 +164,72 @@ contains
 
   end subroutine system_init
 
+  !----------------------------------------------------------
+  subroutine subsystems_init(this, st, grid, geo, space)
+    type(base_handle_t), intent(out) :: this
+    type(states_t),      intent(in)  :: st
+    type(grid_t),        intent(in)  :: grid
+    type(geometry_t),    intent(in)  :: geo
+    type(space_t),       intent(in)  :: space
+
+    type(json_object_t), pointer :: ssys_config, live_config
+
+    PUSH_SUB(subsystems_init)
+
+    nullify(ssys_config, live_config)
+    SAFE_ALLOCATE(ssys_config)
+    call ssys_config_parse(ssys_config, st%d%nspin, space%dim)
+    SAFE_ALLOCATE(live_config)
+    call live_config_parse(live_config, st, space)
+    call ssys_config_add(ssys_config, live_config)
+    nullify(live_config)
+    call ssys_handle_init(this, geo, ssys_config)
+    call ssys_handle_start(this, grid)
+    nullify(ssys_config)
+
+    POP_SUB(subsystems_init)
+  end subroutine subsystems_init
+
+  !----------------------------------------------------------
+  subroutine subsystems_get(this, subsys_states)
+    type(base_handle_t),  intent(in) :: this
+    type(base_states_t), pointer     :: subsys_states
+
+    type(base_model_t),  pointer :: subsys_model
+    type(base_system_t), pointer :: subsys_system
+
+    PUSH_SUB(subsystems_get)
+
+    nullify(subsys_states, subsys_model, subsys_system)
+    call base_handle_get(this, subsys_model)
+    ASSERT(associated(subsys_model))
+    call base_model_get(subsys_model, subsys_system)
+    ASSERT(associated(subsys_system))
+    nullify(subsys_model)
+    call base_system_get(subsys_system, subsys_states)
+    nullify(subsys_system)
+
+    POP_SUB(subsystems_get)
+  end subroutine subsystems_get
+
+  !----------------------------------------------------------
+  subroutine subsystems_end(this)
+    type(base_handle_t), intent(inout) :: this
+
+    type(json_object_t), pointer :: config
+
+    PUSH_SUB(subsystems_end)
+
+    nullify(config)
+    call base_handle_get(this, config)
+    ASSERT(associated(config))
+    call ssys_handle_end(this)
+    call json_end(config)
+    SAFE_DEALLOCATE_P(config)
+    nullify(config)
+
+    POP_SUB(subsystems_end)
+  end subroutine subsystems_end
 
   !----------------------------------------------------------
   subroutine system_end(sys)
@@ -184,12 +244,16 @@ contains
     
     call output_end(sys%outp)
     
-    nullify(sys%subsys_model)
-
     if(associated(sys%st)) then
       call states_end(sys%st)
       SAFE_DEALLOCATE_P(sys%st)
     end if
+
+    if(associated(sys%subsys_handle))then
+      call subsystems_end(sys%subsys_handle)
+      SAFE_DEALLOCATE_P(sys%subsys_handle)
+    end if
+    nullify(sys%subsys_handle)
 
     call geometry_end(sys%geo)
     call simul_box_end(sys%gr%sb)
@@ -253,7 +317,7 @@ contains
     POP_SUB(system_h_setup)
   end subroutine system_h_setup
 
-end module system_m
+end module system_oct_m
 
 !! Local Variables:
 !! mode: f90

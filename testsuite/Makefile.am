@@ -17,7 +17,7 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: Makefile.am 13666 2015-03-30 02:41:45Z dstrubbe $
+## $Id: Makefile.am 14766 2015-11-12 15:44:17Z jrfsousa $
 
 SUBDIRS = \
 	components       \
@@ -31,7 +31,8 @@ SUBDIRS = \
 	periodic_systems \
         photo_electron   \
         complex_scaling  \
-	pseudopotentials
+	pseudopotentials \
+	frozen
 
 bin_SCRIPTS = oct-run_regression_test.pl oct-run_testsuite.sh
 

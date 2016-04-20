@@ -15,19 +15,19 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: basins.F90 14221 2015-06-05 16:37:56Z xavier $
+!! $Id: basins.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module basins_m
-  use global_m
-  use index_m
-  use mesh_m
-  use messages_m
-  use par_vec_m
-  use profiling_m
-  use unit_m
-  use unit_system_m
+module basins_oct_m
+  use global_oct_m
+  use index_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use par_vec_oct_m
+  use profiling_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
 
   implicit none
 
@@ -188,7 +188,7 @@ contains
             index = index_from_coords(mesh%idx, point2)
             !From global to local
 #ifdef HAVE_MPI
-            index = vec_global2local(mesh%vp, index, mesh%vp%partno)
+            if(mesh%parallel_in_domains) index = vec_global2local(mesh%vp, index, mesh%vp%partno)
 #endif
             if(index <= 0 .or. index > mesh%np) cycle
             if(this%map(index) == -2) cycle
@@ -288,7 +288,7 @@ contains
     POP_SUB(basins_write)
   end subroutine basins_write
 
-end module basins_m
+end module basins_oct_m
 
 !! Local Variables:
 !! mode: f90

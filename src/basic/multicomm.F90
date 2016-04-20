@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: multicomm.F90 14733 2015-11-02 04:20:38Z xavier $
+!! $Id: multicomm.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
@@ -48,19 +48,19 @@
 !! You can use the routine multicomm_strategy_is_parallel to know if a certain
 !! index is parallelized.
 
-module multicomm_m
-  use global_m
-  use io_m
-  use loct_m
-  use messages_m
-  use mpi_m
+module multicomm_oct_m
+  use global_oct_m
+  use io_oct_m
+  use loct_oct_m
+  use messages_oct_m
+  use mpi_oct_m
 #if defined(HAVE_OPENMP)
   use omp_lib
 #endif
-  use parser_m
-  use profiling_m
-  use utils_m
-  use varinfo_m
+  use parser_oct_m
+  use profiling_oct_m
+  use utils_oct_m
+  use varinfo_oct_m
   
   implicit none
   
@@ -430,7 +430,7 @@ contains
         if(.not. multicomm_strategy_is_parallel(mc, kk)) n_group_max(kk) = 1
       end do
 
-      if(in_debug_mode) then
+      if(debug%info) then
         call messages_write('Debug info: Allowable group ranks:', new_line = .true.)
         do kk = 1, P_STRATEGY_MAX
           call messages_write(par_types(kk), fmt = '2x,a12,":",1x')
@@ -681,7 +681,7 @@ contains
       end if
 
       ! This is temporary debugging information.
-      if(in_debug_mode .and. mc%par_strategy /= P_STRATEGY_SERIAL) then
+      if(debug%info .and. mc%par_strategy /= P_STRATEGY_SERIAL) then
         write(message(1),'(a)') 'Debug: MPI Task Assignment to MPI Groups'
         write(message(2),'(5a10)') 'World', 'Domains', 'States', 'K-Points', 'Other'
         call messages_info(1)
@@ -1020,7 +1020,7 @@ contains
     have_slaves = this%have_slaves
   end function multicomm_have_slaves
 
-end module multicomm_m
+end module multicomm_oct_m
 
 
 !! Local Variables:

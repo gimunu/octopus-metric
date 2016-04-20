@@ -2,7 +2,6 @@ CalculationMode = gs
 #CalculationMode = td
 #CalculationMode = opt_control
 
-DebugLevel = 0
 ExperimentalFeatures = yes
 
 Dimensions = 2
@@ -32,7 +31,7 @@ EigenSolverTolerance = 1.0e-12
 SCFCalculateForces = yes
 
 Mixing = 1.0
-TypeOfMixing = linear
+MixingScheme = linear
 
 MoveIons = yes
 
@@ -48,6 +47,8 @@ TDTimeStep = dt
 
 ampl = 0.1
 freq = (2*pi/stime)
+
+TimeZero = yes
 
 %TDExternalFields
 electric_field | 1.0/sqrt(2.0) | 1.0/sqrt(2.0) | 0.0 | freq | "envelope_function"
@@ -84,7 +85,7 @@ OCTTargetOperator = oct_tg_classical
 
 #OCTCheckGradient = 0.001
 OCTDirectStep = 0.1
-OCTScheme = oct_algorithm_bfgs
+OCTScheme = oct_bfgs
 OCTControlFunctionRepresentation = control_fourier_series_h
 OCTControlFunctionOmegaMax = 10.0
 

@@ -15,25 +15,25 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: multigrid.F90 14688 2015-10-22 15:58:43Z jrfsousa $
+!! $Id: multigrid.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module multigrid_m
-  use boundaries_m
-  use curvilinear_m
-  use derivatives_m
-  use geometry_m
-  use global_m
-  use parser_m
-  use math_m
-  use mesh_m
-  use mesh_init_m
-  use messages_m
-  use par_vec_m
-  use stencil_m
-  use transfer_table_m
-  use profiling_m
+module multigrid_oct_m
+  use boundaries_oct_m
+  use curvilinear_oct_m
+  use derivatives_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use parser_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_init_oct_m
+  use messages_oct_m
+  use par_vec_oct_m
+  use stencil_oct_m
+  use transfer_table_oct_m
+  use profiling_oct_m
 
   implicit none
 
@@ -146,11 +146,7 @@ contains
 
       call derivatives_init(mgrid%level(i)%der, mesh%sb, cv%method /= CURV_METHOD_UNIFORM)
 
-      if(mesh%parallel_in_domains) then
-        call mesh_init_stage_3(mgrid%level(i)%mesh, stencil, mesh%mpi_grp, parent = mgrid%level(i - 1)%mesh)
-      else
-        call mesh_init_stage_3(mgrid%level(i)%mesh)
-      end if
+      call mesh_init_stage_3(mgrid%level(i)%mesh, stencil, mesh%mpi_grp, parent = mgrid%level(i - 1)%mesh)
 
       call multigrid_get_transfer_tables(mgrid%level(i)%tt, mgrid%level(i-1)%mesh, mgrid%level(i)%mesh)
 
@@ -450,7 +446,7 @@ contains
 #include "complex.F90"
 #include "multigrid_inc.F90"
 
-end module multigrid_m
+end module multigrid_oct_m
 
 !! Local Variables:
 !! mode: f90

@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: batch_ops_inc.F90 14714 2015-10-30 03:56:51Z xavier $
+!! $Id: batch_ops_inc.F90 15260 2016-04-08 13:12:34Z xavier $
 
 !--------------------------------------------------------------
 
@@ -243,12 +243,10 @@ end subroutine X(batch_axpy_vec)
 
 ! --------------------------------------------------------------
 
-subroutine X(batch_scal_const)(np, aa, xx, a_start, a_full)
+subroutine X(batch_scal_const)(np, aa, xx)
   integer,           intent(in)    :: np
   R_TYPE,            intent(in)    :: aa
   type(batch_t),     intent(inout) :: xx
-  integer, optional, intent(in)    :: a_start
-  logical, optional, intent(in)    :: a_full
 
   R_TYPE, allocatable :: aavec(:)
   
@@ -258,7 +256,7 @@ subroutine X(batch_scal_const)(np, aa, xx, a_start, a_full)
 
   aavec(1:xx%nst) = aa
 
-  call X(batch_scal_vec)(np, aavec, xx, a_start, a_full)
+  call X(batch_scal_vec)(np, aavec, xx, a_full = .false.)
   
   SAFE_DEALLOCATE_A(aavec)
   
@@ -461,15 +459,17 @@ subroutine X(batch_xpay_vec)(np, xx, aa, yy, a_start, a_full)
 #endif
   case(BATCH_PACKED)
     if(batch_type(yy) == TYPE_CMPLX) then
-      do ist = 1, yy%pack%size(1)
-        do ip = 1, np
+      !$omp parallel do private(ip, ist)
+      do ip = 1, np
+        do ist = 1, yy%pack%size(1)
           yy%pack%zpsi(ist, ip) = xx%pack%zpsi(ist, ip) + aa_linear(ist)*yy%pack%zpsi(ist, ip)
         end do
       end do
     else
 #ifdef R_TREAL
-      do ist = 1, yy%pack%size(1)
-        do ip = 1, np
+      !$omp parallel do private(ip, ist)
+      do ip = 1, np
+        do ist = 1, yy%pack%size(1)
           yy%pack%dpsi(ist, ip) = xx%pack%dpsi(ist, ip) + aa_linear(ist)*yy%pack%dpsi(ist, ip)
         end do
       end do
@@ -491,6 +491,8 @@ subroutine X(batch_xpay_vec)(np, xx, aa, yy, a_start, a_full)
       end if
     end do
   end select
+
+  call profiling_count_operations(xx%nst_linear*np*(R_ADD + R_MUL))
 
   call batch_pack_was_modified(yy)
 

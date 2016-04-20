@@ -1,13 +1,13 @@
 #include "global.h"
 
-module atom_m
-  use global_m
-  use json_m
-  use messages_m
-  use profiling_m
-  use species_m
-  use unit_m
-  use unit_system_m
+module atom_oct_m
+  use global_oct_m
+  use json_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use species_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
 
   implicit none
 
@@ -163,12 +163,10 @@ contains
     type(atom_t),    target,  intent(in)  :: this
     type(species_t), pointer, intent(out) :: species
 
-    PUSH_SUB(atom_get_species)
+    ! NO PUSH_SUB, called too often
 
-    species=>null()
-    if(associated(this%species))species=>this%species
-
-    POP_SUB(atom_get_species)
+    species => null()
+    if(associated(this%species)) species => this%species
 
   end subroutine atom_get_species
   
@@ -337,7 +335,7 @@ contains
     POP_SUB(atom_classical_write_xyz)
   end subroutine atom_classical_write_xyz
 
-end module atom_m
+end module atom_oct_m
 
 !! Local Variables:
 !! mode: f90

@@ -15,51 +15,51 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: forces.F90 14541 2015-09-06 15:13:42Z xavier $
+!! $Id: forces.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module forces_m
-  use batch_m
-  use batch_ops_m
-  use born_charges_m
-  use boundaries_m
+module forces_oct_m
+  use batch_oct_m
+  use batch_ops_oct_m
+  use born_charges_oct_m
+  use boundaries_oct_m
 #ifdef HAVE_OPENCL
   use cl
 #endif
-  use comm_m
-  use density_m
-  use derivatives_m
-  use epot_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hamiltonian_m
-  use hamiltonian_base_m
-  use index_m
-  use io_m
-  use kpoints_m
-  use lalg_basic_m
-  use lasers_m
-  use linear_response_m
-  use loct_math_m
-  use math_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use profiling_m
-  use projector_m
-  use octcl_kernel_m
-  use opencl_m
-  use simul_box_m
-  use species_m
-  use species_pot_m
-  use states_m
-  use states_dim_m
-  use symm_op_m
-  use symmetrizer_m
-  use types_m
+  use comm_oct_m
+  use density_oct_m
+  use derivatives_oct_m
+  use epot_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hamiltonian_oct_m
+  use hamiltonian_base_oct_m
+  use index_oct_m
+  use io_oct_m
+  use kpoints_oct_m
+  use lalg_basic_oct_m
+  use lasers_oct_m
+  use linear_response_oct_m
+  use loct_math_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use profiling_oct_m
+  use projector_oct_m
+  use octcl_kernel_oct_m
+  use opencl_oct_m
+  use simul_box_oct_m
+  use species_oct_m
+  use species_pot_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use symm_op_oct_m
+  use symmetrizer_oct_m
+  use types_oct_m
 
   implicit none
 
@@ -129,7 +129,7 @@ contains
     integer, target :: j, ist, ik, iatom
     FLOAT :: r, w2r_, w1r_, xx(MAX_DIM), dq, pdot3p, pdot3m, pdot3p2, pdot3m2, dforce1, dforce2
     type(profile_t), save :: forces_prof
-
+    CMPLX, allocatable :: zpsi(:, :)
     FLOAT, allocatable :: forceks1p(:), forceks1m(:), forceks1p2(:), forceks1m2(:), dforceks1(:)
 
     call profiling_in(forces_prof, "FORCES")
@@ -176,11 +176,13 @@ contains
     SAFE_ALLOCATE(forceks1p2(1:gr%sb%dim))
     SAFE_ALLOCATE(forceks1m2(1:gr%sb%dim))
     SAFE_ALLOCATE(dforceks1(1:gr%sb%dim))
+    SAFE_ALLOCATE(zpsi(1:gr%mesh%np_part, 1:psi%d%dim))
     
     do ist = 1, psi%nst
       do ik = 1, psi%d%nik
         derpsi_ = M_z0
-        call zderivatives_grad(gr%der, psi%zdontusepsi(:, 1, ist, ik), derpsi_(:, :, 1))
+        call states_get_state(psi, gr%mesh, ist, ik, zpsi)
+        call zderivatives_grad(gr%der, zpsi(:, 1), derpsi_(:, :, 1))
         do iatom = 1, geo%natoms
           do j = 1, gr%sb%dim
             call force1(geo%atom(iatom)%x(j) + dq, forceks1p, pdot3p)
@@ -196,6 +198,7 @@ contains
       end do
     end do
 
+    SAFE_DEALLOCATE_A(zpsi)
     SAFE_DEALLOCATE_A(forceks1p)
     SAFE_DEALLOCATE_A(forceks1m)
     SAFE_DEALLOCATE_A(forceks1p2)
@@ -237,17 +240,22 @@ contains
 
     integer :: m
     FLOAT :: qold
-    CMPLX, allocatable :: viapsi(:, :)
+    CMPLX, allocatable :: viapsi(:, :), zpsi(:, :)
 
     qold = geo_%atom(iatom_)%x(j_)
     geo_%atom(iatom_)%x(j_) = q
     SAFE_ALLOCATE(viapsi(1:gr_%mesh%np_part, 1:psi_%d%dim))
+    SAFE_ALLOCATE(zpsi(1:gr_%mesh%np_part, 1:psi_%d%dim))
     viapsi = M_z0
-    call zhamiltonian_apply_atom (hm_, geo_, gr_, iatom_, psi_%zdontusepsi(:, :, ist_, ik_), viapsi)
+    call states_get_state(psi_, gr_%mesh, ist_, ik_, zpsi)
+    call zhamiltonian_apply_atom (hm_, geo_, gr_, iatom_, zpsi, viapsi)
+    
     do m = 1, ubound(res, 1)
       res(m) = real( zmf_dotp(gr_%mesh, viapsi(:, 1), derpsi_(:, m, 1)) , REAL_PRECISION)
     end do
-    pdot3 = real(M_zI * zmf_dotp(gr_%mesh, chi_%zdontusepsi(:, 1, ist_, ik_), viapsi(:, 1)), REAL_PRECISION)
+
+    call states_get_state(chi_, gr_%mesh, ist_, ik_, zpsi)
+    pdot3 = real(M_zI * zmf_dotp(gr_%mesh, zpsi(:, 1), viapsi(:, 1)), REAL_PRECISION)
     geo_%atom(iatom_)%x(j_) = qold
     SAFE_DEALLOCATE_A(viapsi)
   end subroutine force1
@@ -389,7 +397,7 @@ contains
 #include "complex.F90"
 #include "forces_inc.F90"
 
-end module forces_m
+end module forces_oct_m
 
 !! Local Variables:
 !! mode: f90

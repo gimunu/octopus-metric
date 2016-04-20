@@ -15,27 +15,27 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: td_calc.F90 13649 2015-03-29 11:12:38Z micael $
+!! $Id: td_calc.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module td_calc_m
+module td_calc_oct_m
   use iso_c_binding 
-  use forces_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hamiltonian_base_m
-  use hamiltonian_m
-  use lasers_m
-  use loct_math_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use profiling_m
-  use states_calc_m
-  use states_m
-  use states_dim_m
+  use forces_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hamiltonian_base_oct_m
+  use hamiltonian_oct_m
+  use lasers_oct_m
+  use loct_math_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use profiling_oct_m
+  use states_calc_oct_m
+  use states_oct_m
+  use states_dim_oct_m
 
   implicit none
 
@@ -193,8 +193,8 @@ end subroutine td_calc_tvel
 subroutine td_calc_ionch(gr, st, ch, Nch)
   type(grid_t),        intent(in)    :: gr
   type(states_t),      intent(in)    :: st
-  FLOAT,               intent(out)   :: ch(0:Nch)
   integer,             intent(in)    :: Nch
+  FLOAT,               intent(out)   :: ch(0:Nch)
 
   integer :: ik, ist, ii, jj, idim, Nid
   FLOAT   :: prod, prod0
@@ -273,7 +273,7 @@ subroutine td_calc_ionch(gr, st, ch, Nch)
       SAFE_ALLOCATE(idx0(0:ii-1))
     end if 
 !     print *,"size(idx0,1)=",size(idx0,1)
-    if(in_debug_mode) then
+    if(debug%info) then
       call messages_write("P(")
       call messages_write(ii)
       call messages_write(") = 0")
@@ -283,7 +283,7 @@ subroutine td_calc_ionch(gr, st, ch, Nch)
     do
       prod  = M_ONE
       prod0 = M_ONE
-      if(in_debug_mode) then
+      if(debug%info) then
         call messages_write("P(")
         call messages_write(ii)
         call messages_write(") += ")
@@ -292,7 +292,7 @@ subroutine td_calc_ionch(gr, st, ch, Nch)
       idx(:) = idxref(:)
       do jj = 0, ii-1
         idx(idx0(jj))= -1
-        if(in_debug_mode) then
+        if(debug%info) then
           call messages_write(" No(")
           call messages_write(idx0(jj)+1)
           call messages_write(") ")
@@ -302,7 +302,7 @@ subroutine td_calc_ionch(gr, st, ch, Nch)
 
       do jj = 0, Nid
         if(idx(jj)>=0) then
-          if(in_debug_mode) then
+          if(debug%info) then
             call messages_write(" N(")
             call messages_write(idx(jj)+1)
             call messages_write(") ")
@@ -311,7 +311,7 @@ subroutine td_calc_ionch(gr, st, ch, Nch)
         end if
       end do
       
-      if(in_debug_mode) call messages_new_line()
+      if(debug%info) call messages_new_line()
 
       ch(ii) = ch(ii) + prod*prod0
 
@@ -321,7 +321,7 @@ subroutine td_calc_ionch(gr, st, ch, Nch)
     SAFE_DEALLOCATE_A(idx0)
     call loct_combination_end(c)
 
-    if(in_debug_mode) call messages_info()
+    if(debug%info) call messages_info()
   end do 
 
   SAFE_DEALLOCATE_A(idx)
@@ -336,7 +336,7 @@ subroutine td_calc_ionch(gr, st, ch, Nch)
 end subroutine td_calc_ionch
 
 
-end module td_calc_m
+end module td_calc_oct_m
 
 !! Local Variables:
 !! mode: f90

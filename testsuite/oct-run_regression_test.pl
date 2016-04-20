@@ -17,7 +17,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301, USA.
 #
-# $Id: oct-run_regression_test.pl 14253 2015-06-11 18:10:52Z dstrubbe $
+# $Id: oct-run_regression_test.pl 15190 2016-03-09 01:08:25Z xavier $
 
 use warnings;
 use Getopt::Std;
@@ -30,7 +30,7 @@ sub usage {
 
   print <<EndOfUsage;
 
- Copyright (C) 2005-2014 H. Appel, M. Marques, X. Andrade, D. Strubbe
+ Copyright (C) 2005-2016 H. Appel, M. Marques, X. Andrade, D. Strubbe
 
 Usage: oct-run_regression_test.pl [options]
 
@@ -171,7 +171,10 @@ $test_succeeded = 1;
 
 $pwd = get_env("PWD");
 if (!$opt_m) {
-    $workdir = tempdir("$tempdirpath/octopus.XXXXXX");
+    my $name = $opt_f;
+    $name =~ s/\.\.\///g;
+    $name =~ s/\//-/g;
+    $workdir = tempdir("$tempdirpath/octopus" . "-" . $name . ".XXXXXX");
     chomp($workdir);
 
     system ("rm -rf $workdir");
@@ -406,6 +409,11 @@ while ($_ = <TESTSUITE>) {
       elsif ( $_ =~ /^Precision\s*:\s*(.*)\s*$/) {
 	set_precision($1);
       }
+
+      elsif ( $_ =~ /^ExtraFile\s*:\s*(.*)\s*$/) {
+        $file_cp = dirname($opt_f)."/".$1;
+        $cp_return = system("cp $file_cp $workdir/");
+      } 
 
       elsif ( $_ =~ /^match/ ) {
 	  # FIXME: should we do matches even when execution failed?

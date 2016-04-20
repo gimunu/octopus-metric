@@ -15,36 +15,36 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: xc_ks_inversion.F90 14456 2015-07-24 00:05:28Z xavier $
+!! $Id: xc_ks_inversion.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module xc_ks_inversion_m
-  use density_m
-  use derivatives_m
-  use eigensolver_m 
-  use geometry_m 
-  use global_m 
-  use grid_m 
-  use hamiltonian_m 
-  use io_m 
-  use io_function_m
-  use lalg_adv_m 
-  use mesh_function_m 
-  use mesh_m 
-  use messages_m 
-  use multicomm_m
-  use parser_m 
-  use poisson_m 
-  use profiling_m 
-  use states_m 
-  use states_dim_m 
-  use unit_m 
-  use unit_system_m 
-  use varinfo_m 
+module xc_ks_inversion_oct_m
+  use density_oct_m
+  use derivatives_oct_m
+  use eigensolver_oct_m 
+  use geometry_oct_m 
+  use global_oct_m 
+  use grid_oct_m 
+  use hamiltonian_oct_m 
+  use io_oct_m 
+  use io_function_oct_m
+  use lalg_adv_oct_m 
+  use mesh_function_oct_m 
+  use mesh_oct_m 
+  use messages_oct_m 
+  use multicomm_oct_m
+  use parser_oct_m 
+  use poisson_oct_m 
+  use profiling_oct_m 
+  use states_oct_m 
+  use states_dim_oct_m 
+  use unit_oct_m 
+  use unit_system_oct_m 
+  use varinfo_oct_m 
   use XC_F90(lib_m) 
-  use xc_m 
-  use xc_functl_m
+  use xc_oct_m 
+  use xc_functl_oct_m
 
   implicit none
 
@@ -258,7 +258,7 @@ contains
       do jj = asym1+1, asym2-1
         vks(jj, ii) = laplace(jj, ii)/(M_TWO*sqrtrho(jj, ii))
       end do
-      aux_hm%vxc(:,ii) = vks(:,ii) - aux_hm%ep%vpsl(:) - aux_hm%vhartree(:)
+      aux_hm%vxc(:,ii) = vks(:,ii) - aux_hm%ep%vpsl(:) - aux_hm%vhartree(1:np)
     end do
 
     !ensure correct asymptotic behavior, only for 1D potentials at the moment
@@ -306,7 +306,7 @@ contains
     end if  
 
     do ii = 1, nspin
-      aux_hm%vhxc(:,ii) = aux_hm%vxc(:,ii) + aux_hm%vhartree(:)
+      aux_hm%vhxc(:,ii) = aux_hm%vxc(:,ii) + aux_hm%vhartree(1:np)
     end do
     
     call hamiltonian_update(aux_hm, gr%mesh)
@@ -453,7 +453,7 @@ contains
       aux_hm%vhxc(1:np,1:nspin) = vhxc(1:np, 1:nspin)
       
       do jj = 1, nspin
-        aux_hm%vxc(:,jj) = vhxc(:,jj) - aux_hm%vhartree(:)
+        aux_hm%vxc(:, jj) = vhxc(:, jj) - aux_hm%vhartree(1:np)
       end do
     end do
 
@@ -494,7 +494,7 @@ contains
     aux_hm%vhxc(1:np,1:nspin) = vhxc(1:np, 1:nspin)
       
     do jj = 1, nspin
-      aux_hm%vxc(:,jj) = vhxc(:,jj) - aux_hm%vhartree(:)
+      aux_hm%vxc(:,jj) = vhxc(:,jj) - aux_hm%vhartree(1:np)
     end do
 
     !calculate final density
@@ -524,10 +524,13 @@ contains
     FLOAT, optional,          intent(in)    :: time
 
     integer :: ii
+    integer :: np
 
     if(ks_inversion%level == XC_KS_INVERSION_NONE) return
 
     PUSH_SUB(X(xc_ks_inversion_calc))
+
+    np = gr%mesh%np
 
     call density_calc(st, gr, st%rho)
     
@@ -552,7 +555,7 @@ contains
 ! no restart data available, start with vhxc = vh, which we know from exact input rho
       do ii = 1, st%d%nspin
         ks_inversion%aux_hm%vxc(:,ii)  = M_ZERO !hm%ep%vpsl(:)
-        ks_inversion%aux_hm%vhxc(:,ii) = ks_inversion%aux_hm%vhartree(:) + ks_inversion%aux_hm%vxc(:,ii)
+        ks_inversion%aux_hm%vhxc(:,ii) = ks_inversion%aux_hm%vhartree(1:np) + ks_inversion%aux_hm%vxc(:,ii)
       end do
 ! TODO: restart data found. Use first KS orbital to invert equation and get starting vhxc
 !      call invertks_2part(ks_inversion%aux_st%rho, st%d%nspin, ks_inversion%aux_hm, gr, &
@@ -580,7 +583,7 @@ contains
     ! ATTENTION: subtracts true external potential not adiabatic one 
     
     do ii = 1, st%d%nspin
-      ks_inversion%aux_hm%vxc(:,ii)  = ks_inversion%aux_hm%vhxc(:,ii) - hm%vhartree(:)
+      ks_inversion%aux_hm%vxc(:,ii)  = ks_inversion%aux_hm%vhxc(:,ii) - hm%vhartree(1:np)
     end do
 
     vxc = ks_inversion%aux_hm%vxc
@@ -597,7 +600,7 @@ contains
   end subroutine xc_ks_inversion_calc
 
 
-end module xc_ks_inversion_m
+end module xc_ks_inversion_oct_m
 
 !! Local Variables:
 !! mode: f90

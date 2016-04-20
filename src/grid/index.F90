@@ -15,18 +15,18 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: index.F90 14624 2015-10-03 13:39:53Z xavier $
+!! $Id: index.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module index_m
-  use global_m
-  use hypercube_m
-  use io_m
-  use io_binary_m
-  use messages_m
-  use mpi_m
-  use simul_box_m
+module index_oct_m
+  use global_oct_m
+  use hypercube_oct_m
+  use io_oct_m
+  use io_binary_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use simul_box_oct_m
 
   implicit none
 
@@ -381,7 +381,7 @@ contains
     PUSH_SUB(index_subset_indices)
 
     ! In debug mode, check for valid indices in from, to first.
-    if(in_debug_mode) then
+    if(debug%info) then
       if(.not.index_valid(idx, from).or..not.index_valid(idx, to)) then
         message(1) = 'Failed assertion:'
         message(2) = 'mesh.mesh_subset_indices has been passed points outside the box:'
@@ -410,7 +410,7 @@ contains
     POP_SUB(index_subset_indices)
   end subroutine index_subset_indices
 
-end module index_m
+end module index_oct_m
 
 !! Local Variables:
 !! mode: f90

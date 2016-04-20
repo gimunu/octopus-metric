@@ -15,49 +15,50 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: td.F90 14560 2015-09-13 11:45:22Z huebener $
+!! $Id: td.F90 15214 2016-03-21 12:47:45Z umberto $
 
 #include "global.h"
 
-module td_m
-  use calc_mode_par_m
-  use density_m
-  use energy_calc_m
-  use forces_m
-  use gauge_field_m
-  use geometry_m
-  use grid_m
-  use ground_state_m
-  use hamiltonian_m
-  use io_m
-  use ion_dynamics_m
-  use kick_m
-  use lasers_m
-  use loct_m
-  use loct_math_m
-  use modelmb_exchange_syms_m
-  use mpi_m
-  use parser_m
-  use PES_m
-  use poisson_m
-  use potential_interpolation_m
-  use profiling_m
-  use restart_m
-  use scdm_m
-  use scf_m
-  use simul_box_m
-  use states_m
-  use states_calc_m
-  use states_restart_m
-  use system_m
-  use propagator_m
-  use propagator_base_m
-  use td_write_m
-  use types_m
-  use unit_m
-  use unit_system_m
-  use v_ks_m
-  use varinfo_m
+module td_oct_m
+  use boundary_op_oct_m
+  use calc_mode_par_oct_m
+  use density_oct_m
+  use energy_calc_oct_m
+  use forces_oct_m
+  use gauge_field_oct_m
+  use geometry_oct_m
+  use grid_oct_m
+  use ground_state_oct_m
+  use hamiltonian_oct_m
+  use io_oct_m
+  use ion_dynamics_oct_m
+  use kick_oct_m
+  use lasers_oct_m
+  use loct_oct_m
+  use loct_math_oct_m
+  use modelmb_exchange_syms_oct_m
+  use mpi_oct_m
+  use parser_oct_m
+  use pes_oct_m
+  use poisson_oct_m
+  use potential_interpolation_oct_m
+  use profiling_oct_m
+  use restart_oct_m
+  use scdm_oct_m
+  use scf_oct_m
+  use simul_box_oct_m
+  use states_oct_m
+  use states_calc_oct_m
+  use states_restart_oct_m
+  use system_oct_m
+  use propagator_oct_m
+  use propagator_base_oct_m
+  use td_write_oct_m
+  use types_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use v_ks_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -167,17 +168,14 @@ contains
     !% evolution becoming unstable.
     !%
     !% The default value is the maximum value that we have found
-    !% empirically that is stable for the spacing Octopus is
-    !% using. However, you might need to adjust this value.
+    !% empirically that is stable for the spacing <math>h</math>:
+    !% <math>dt = 0.0426 - 0.207 h + 0.808 h^2</math>
+    !% (from parabolic fit to Fig. 4 of http://dx.doi.org/10.1021/ct800518j,
+    !% probably valid for 3D systems only).
+    !% However, you might need to adjust this value.
     !%End
 
     spacing = minval(sys%gr%mesh%spacing(1:sys%gr%sb%dim))
-    ! These constants come from adjusting a parabola to values of
-    ! maximum dt for different spacings (Fig. 4 of
-    ! http://dx.doi.org/10.1021/ct800518j ).
-    !
-    ! This is probably valid for 3D systems only.
-    !
     default_dt = CNST(0.0426) - CNST(0.207)*spacing + CNST(0.808)*spacing**2
     default_dt = default_dt*td%mu
 
@@ -237,7 +235,7 @@ contains
     end if
 
     ! now the photoelectron stuff
-    call PES_init(td%PESv, sys%gr%mesh, sys%gr%sb, sys%st, sys%outp%restart_write_interval, hm, td%max_iter, td%dt)
+    call pes_init(td%pesv, sys%gr%mesh, sys%gr%sb, sys%st, sys%outp%restart_write_interval, hm, td%max_iter, td%dt)
 
     !%Variable TDDynamics
     !%Type integer
@@ -317,7 +315,7 @@ contains
 
     PUSH_SUB(td_end)
 
-    call PES_end(td%PESv)
+    call pes_end(td%pesv)
     call propagator_end(td%tr)  ! clean the evolution method
     call ion_dynamics_end(td%ions)
 
@@ -421,7 +419,7 @@ contains
     call messages_print_stress(stdout, "Time-Dependent Simulation")
     call print_header()
 
-    if(td%pesv%calc_rc .or. td%pesv%calc_mask .and. fromScratch) then
+    if(td%pesv%calc_spm .or. td%pesv%calc_mask .and. fromScratch) then
       call pes_init_write(td%pesv,gr%mesh,st)
     end if
 
@@ -447,9 +445,6 @@ contains
         end if
       end if
 
-      !Apply mask absorbing boundaries
-      if(hm%ab == MASK_ABSORBING) call zvmask(gr, hm, st) 
-
       ! in case use scdm localized states for exact exchange and request a new localization             
       if(hm%scdm_EXX) scdm_is_local = .false.
 
@@ -463,8 +458,11 @@ contains
         call propagator_dt_bo(td%scf, gr, sys%ks, st, hm, td%gauge_force, geo, sys%mc, sys%outp, iter, td%dt, td%ions, scsteps)
       end select
 
+      !Apply mask absorbing boundaries
+      if(hm%bc%abtype == MASK_ABSORBING) call zvmask(gr, hm, st) 
+
       !Photoelectron stuff 
-      if(td%pesv%calc_rc .or. td%pesv%calc_mask .or. td%pesv%calc_flux) &
+      if(td%pesv%calc_spm .or. td%pesv%calc_mask .or. td%pesv%calc_flux) &
         call pes_calc(td%pesv, gr%mesh, st, td%dt, iter, td%max_iter, gr, hm)
 
       call td_write_iter(write_handler, gr, st, hm, geo, hm%ep%kick, td%dt, iter)
@@ -794,8 +792,8 @@ contains
 
     type(states_t) :: stin
     type(block_t) :: blk
-    CMPLX, allocatable :: rotation_matrix(:,:)
-    integer :: ist, jst, ncols
+    CMPLX, allocatable :: rotation_matrix(:,:), psi(:, :)
+    integer :: ist, jst, ncols, iqn
     character(len=256) :: block_name
     
     PUSH_SUB(transform_states)
@@ -837,9 +835,14 @@ contains
         end if
         call states_copy(stin, st, exclude_wfns = .true.)
         call states_look_and_load(restart, stin, gr)
+
         ! FIXME: rotation matrix should be R_TYPE
-        SAFE_ALLOCATE(rotation_matrix(1:st%nst, 1:stin%nst))
+        SAFE_ALLOCATE(rotation_matrix(1:stin%nst, 1:stin%nst))
+        SAFE_ALLOCATE(psi(1:gr%mesh%np, 1:st%d%dim))
+        
         rotation_matrix = M_z0
+        forall(ist = 1:stin%nst) rotation_matrix(ist, ist) = CNST(1.0)
+        
         do ist = 1, st%nst
           ncols = parse_block_cols(blk, ist-1)
           if(ncols /= stin%nst) then            
@@ -848,22 +851,35 @@ contains
             call messages_fatal(1)
           end if
           do jst = 1, stin%nst
-            call parse_block_cmplx(blk, ist-1, jst-1, rotation_matrix(ist, jst))
+            call parse_block_cmplx(blk, ist - 1, jst - 1, rotation_matrix(jst, ist))
           end do
         end do
+
         call parse_block_end(blk)
-        if(states_are_real(st)) then
-          call dstates_rotate(gr%mesh, st, stin, real(rotation_matrix, REAL_PRECISION))
-        else
-          call zstates_rotate(gr%mesh, st, stin, rotation_matrix)
-        end if
+
+        do iqn = st%d%kpt%start, st%d%kpt%end
+          if(states_are_real(st)) then
+            call states_rotate(gr%mesh, stin, real(rotation_matrix, REAL_PRECISION), iqn)
+          else
+            call states_rotate(gr%mesh, stin, rotation_matrix, iqn)
+          end if
+
+          do ist = st%st_start, st%st_end 
+            call states_get_state(stin, gr%mesh, ist, iqn, psi)
+            call states_set_state(st, gr%mesh, ist, iqn, psi)
+          end do
+
+        end do
+
         SAFE_DEALLOCATE_A(rotation_matrix)
+        SAFE_DEALLOCATE_A(psi)
+
         call states_end(stin)
+
       else
-        message(1) = '"' // trim(block_name) // '" has to be specified as block.'
-        call messages_info(1)
-        call messages_input_error(trim(block_name))
+        call messages_input_error(trim(block_name), '"' // trim(block_name) // '" has to be specified as block.')
       end if
+      
     end if
 
     POP_SUB(transform_states)
@@ -891,7 +907,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing td restart."
       call messages_info(1)
     end if
@@ -912,7 +928,7 @@ contains
       call gauge_field_dump(restart, hm%ep%gfield, ierr)
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing td restart done."
       call messages_info(1)
     end if
@@ -941,7 +957,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading td restart."
       call messages_info(1)
     end if
@@ -959,7 +975,7 @@ contains
     if (err2 /= 0) ierr = ierr + 2
 
     ! read PES restart
-    if (td%pesv%calc_rc .or. td%pesv%calc_mask .or. td%pesv%calc_flux) then
+    if (td%pesv%calc_spm .or. td%pesv%calc_mask .or. td%pesv%calc_flux) then
       call pes_load(restart, td%pesv, st, gr%mesh, err)
       if (err /= 0) ierr = ierr + 4
     end if
@@ -974,7 +990,7 @@ contains
       end if
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading td restart done."
       call messages_info(1)
     end if
@@ -982,7 +998,7 @@ contains
     POP_SUB(td_load)
   end subroutine td_load
 
-end module td_m
+end module td_oct_m
 
 !! Local Variables:
 !! mode: f90

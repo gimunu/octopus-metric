@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: derivatives_inc.F90 14217 2015-06-05 00:54:11Z xavier $
+!! $Id: derivatives_inc.F90 14831 2015-11-27 09:07:53Z xavier $
 
 !> This module calculates the derivatives (gradients, Laplacians, etc.) 
 !! of a function. Note that the function whose derivative is to be calculated
@@ -79,39 +79,32 @@ subroutine X(derivatives_batch_finish)(handle)
 #ifdef HAVE_MPI
   if(derivatives_overlap(handle%der) .and. handle%der%mesh%parallel_in_domains .and. handle%ghost_update) then
 
-    if(batch_status(handle%ff) /= BATCH_CL_PACKED) then
-      done = .true.
-
-      if(handle%factor_present) then
-        call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, &
-          ghost_update=.false., points=OP_INNER, factor = handle%factor)
-      else
-        call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, ghost_update=.false., points=OP_INNER)
-      end if
+    done = .true.
+    
+    if(handle%factor_present) then
+      call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, &
+        ghost_update = .false., points = OP_INNER, factor = handle%factor)
+    else
+      call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, ghost_update=.false., points=OP_INNER)
     end if
 
     call X(ghost_update_batch_finish)(handle%pv_h)
 
-    if(batch_status(handle%ff) /= BATCH_CL_PACKED) then
-      if(handle%factor_present) then
-        call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, &
-          ghost_update = .false., points = OP_OUTER, factor = handle%factor)
-      else
-        call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, ghost_update = .false., points = OP_OUTER)
-      end if
-
-      ASSERT(done)
+    if(handle%factor_present) then
+      call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, &
+        ghost_update = .false., points = OP_OUTER, factor = handle%factor)
+    else
+      call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, ghost_update = .false., points = OP_OUTER)
     end if
-
+    
   end if
 #endif
 
   if(.not. done) then
     if(handle%factor_present) then
-      call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, &
-        ghost_update = handle%ghost_update, factor = handle%factor)
+      call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, ghost_update = .false., factor = handle%factor)
     else
-      call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, ghost_update = handle%ghost_update)
+      call X(nl_operator_operate_batch)(handle%op, handle%ff, handle%opff, ghost_update = .false.)
     end if
   end if
 

@@ -15,12 +15,12 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: configure.ac 14677 2015-10-18 20:47:07Z xavier $
+## $Id: configure.ac 15281 2016-04-16 16:09:57Z askhl $
 
 AC_PREREQ(2.59)
 # Note: the version string is written into ETSF_IO files, so when you update
 # this, update the results for test periodic_systems/09-etsf_io.test too.
-AC_INIT([Octopus],[tetricus],[octopus-devel@tddft.org],[octopus])
+AC_INIT([Octopus],[mimus],[octopus-devel@tddft.org],[octopus])
 AC_CONFIG_SRCDIR([src/basic/global.F90])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE
@@ -28,7 +28,7 @@ AM_INIT_AUTOMAKE
 AC_CONFIG_HEADERS([config.h])
 
 # Installation prefix by default
-AC_PREFIX_DEFAULT([/opt/etsf])
+AC_PREFIX_DEFAULT([/usr/local])
 
 # who am i
 AC_CANONICAL_HOST
@@ -40,7 +40,7 @@ AC_PROG_MAKE_SET
 AC_PROG_RANLIB
 
 dnl check whether mpi is enabled
-AC_ARG_ENABLE(mpi, AS_HELP_STRING([--enable-mpi(=PATH)], [Parallel version]))
+AC_ARG_ENABLE(mpi, AS_HELP_STRING([--enable-mpi(=PATH)], [Parallel version. For ancient versions of MPI, you may need to specify PATH for MPI libs.]))
 case $enable_mpi in
   yes) ;;
   no | "") enable_mpi=no ;;
@@ -63,6 +63,9 @@ fi
 
 AC_PROG_CC($octopus_default_cc)
 AC_PROG_CC_C99
+
+AC_PROG_CXX
+AC_CXX_LIBRARY_LDFLAGS
 
 # optimizations extensions supported by the compiler
 AC_C_INLINE
@@ -96,7 +99,6 @@ strndup tcgetpgrp scandir alphasort \
 sigaction readdir closedir strchr strtod \
 perror strcasestr sbrk getopt_long uname ioctl])
 
-ACX_PAPI
 ACX_ARCH
 
 dnl ============================================================================
@@ -140,10 +142,6 @@ else
 fi
 AC_SUBST(F90_FORALL)
   
-dnl check for NEWUOA
-ACX_NEWUOA
-AM_CONDITIONAL(COMPILE_NEWUOA, test x${HAVE_NEWUOA} = x1)
-
 dnl check for C MPI
 if test x"$enable_mpi" == x"yes"; then
   AC_CHECK_HEADER(mpi.h,,AC_MSG_ERROR([cannot find mpi.h]))
@@ -184,6 +182,8 @@ ACX_FCFLAGS
 
 dnl octopus needs the preprocessor. The result goes to FCCPP
 ACX_FCCPP
+
+AC_FC_LIBRARY_LDFLAGS
 
 dnl how Fortran mangles function names
 AC_FC_WRAPPERS
@@ -260,9 +260,7 @@ ACX_LAPACK([], AC_MSG_ERROR([could not find required LAPACK library]))
 
 dnl check for GSL
 AC_LANG_PUSH(C)
-
-AX_PATH_GSL([1],[9],[], 
-  AC_MSG_ERROR([could not find required GSL library]))
+AX_PATH_GSL
 
 dnl check for GD library
 ACX_GDLIB
@@ -294,6 +292,9 @@ ACX_BERKELEYGW
 
 dnl check for SPARSKIT
 ACX_SPARSKIT
+
+dnl check for NLOPT
+ACX_NLOPT
   
 dnl check for Fortran MPI support
 if test x"$enable_mpi" != x"no"; then
@@ -350,7 +351,6 @@ AC_CONFIG_FILES([Makefile
   external_libs/qshep/Makefile
   external_libs/spglib-1.5.2/Makefile
   external_libs/spglib-1.5.2/src/Makefile
-  external_libs/newuoa/Makefile
   external_libs/fortrancl/Makefile
   external_libs/bpdn/Makefile
   external_libs/yaml-0.1.4/Makefile
@@ -391,6 +391,7 @@ AC_CONFIG_FILES([Makefile
   share/pseudopotentials/hscv/lda/Makefile
   share/pseudopotentials/hscv/pbe/Makefile  
   share/recipes/Makefile
+  share/recipes/da/Makefile
   share/recipes/en/Makefile
   share/recipes/es/Makefile
   share/recipes/it/Makefile
@@ -412,7 +413,8 @@ AC_CONFIG_FILES([Makefile
   testsuite/periodic_systems/Makefile
   testsuite/photo_electron/Makefile
   testsuite/pseudopotentials/Makefile
-  testsuite/complex_scaling/Makefile])
+  testsuite/complex_scaling/Makefile
+  testsuite/frozen/Makefile])
 AC_CONFIG_FILES([testsuite/oct-run_testsuite.sh], [chmod +x testsuite/oct-run_testsuite.sh])
 AC_CONFIG_FILES([doc/html/varsRightFrame.html])
 

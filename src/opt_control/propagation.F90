@@ -15,45 +15,48 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: propagation.F90 14679 2015-10-19 17:31:06Z acastro $
+!! $Id: propagation.F90 15262 2016-04-08 21:13:28Z xavier $
 
 #include "global.h"
 
-module propagation_m
-  use batch_ops_m
-  use controlfunction_m
-  use density_m
-  use energy_calc_m
-  use epot_m
-  use excited_states_m
-  use forces_m
-  use gauge_field_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hamiltonian_m
-  use io_m
-  use ion_dynamics_m 
-  use lasers_m
-  use loct_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use opt_control_state_m
-  use propagator_m
-  use propagator_base_m
-  use profiling_m
-  use restart_m
-  use species_m
-  use states_m
-  use states_restart_m
-  use system_m
-  use target_m
-  use td_m
-  use td_write_m
-  use v_ks_m
-  use varinfo_m
+module propagation_oct_m
+  use batch_oct_m
+  use batch_ops_oct_m
+  use boundary_op_oct_m
+  use controlfunction_oct_m
+  use density_oct_m
+  use energy_calc_oct_m
+  use epot_oct_m
+  use excited_states_oct_m
+  use forces_oct_m
+  use gauge_field_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hamiltonian_oct_m
+  use io_oct_m
+  use ion_dynamics_oct_m 
+  use lasers_oct_m
+  use loct_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use oct_exchange_oct_m
+  use opt_control_state_oct_m
+  use propagator_oct_m
+  use propagator_base_oct_m
+  use profiling_oct_m
+  use restart_oct_m
+  use species_oct_m
+  use states_oct_m
+  use states_restart_oct_m
+  use system_oct_m
+  use target_oct_m
+  use td_oct_m
+  use td_write_oct_m
+  use v_ks_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -226,7 +229,7 @@ contains
       call v_ks_calc(sys%ks, hm, psi, sys%geo, time = istep*td%dt)
       call energy_calc_total(hm, sys%gr, psi)
 
-      if(hm%ab == MASK_ABSORBING) call zvmask(gr, hm, psi)
+      if(hm%bc%abtype == MASK_ABSORBING) call zvmask(gr, hm, psi)
 
       ! if td_target
       call target_tdcalc(tg, hm, gr, sys%geo, psi, istep, td%max_iter)
@@ -682,7 +685,7 @@ contains
 
         do ik = psi%d%kpt%start, psi%d%kpt%end
           do ib = psi%group%block_start, psi%group%block_end
-            call batch_scal(sys%gr%mesh%np, (/ (cmplx(M_HALF, M_ZERO, REAL_PRECISION), j = 1, sys%gr%mesh%np) /), &
+            call batch_scal(sys%gr%mesh%np, cmplx(M_HALF, M_ZERO, REAL_PRECISION), &
               st_ref%group%psib(ib, ik))
             call batch_axpy(sys%gr%mesh%np, cmplx(M_HALF, M_ZERO, REAL_PRECISION), &
               psi%group%psib(ib, ik), st_ref%group%psib(ib, ik))
@@ -816,7 +819,7 @@ contains
 
     if( hm%theory_level /= INDEPENDENT_PARTICLES .and. (.not.ks%frozen_hxc) ) then
       call density_calc(st, gr, st%rho)
-      call hamiltonian_set_oct_exchange(hm, st, gr%mesh)
+      call oct_exchange_set(hm%oct_exchange, st, gr%mesh)
     end if
 
     call hamiltonian_adjoint(hm)
@@ -859,7 +862,7 @@ contains
     end if
 
     if(hm%theory_level /= INDEPENDENT_PARTICLES .and. (.not.ks%frozen_hxc) ) then
-      call hamiltonian_remove_oct_exchange(hm)
+      call oct_exchange_remove(hm%oct_exchange)
     end if
 
     call hamiltonian_not_adjoint(hm)
@@ -888,51 +891,63 @@ contains
     type(states_t),                 intent(inout) :: chi
     CMPLX,                          intent(inout) :: dl(:), dq(:)
 
-    type(states_t) :: oppsi
+    CMPLX, allocatable :: zpsi(:, :), zoppsi(:, :)
     integer :: no_parameters, j, ik, p
 
     PUSH_SUB(calculate_g)
 
     no_parameters = hm%ep%no_lasers
 
+    SAFE_ALLOCATE(zpsi(1:gr%mesh%np_part, 1:chi%d%dim))
+    SAFE_ALLOCATE(zoppsi(1:gr%mesh%np_part, 1:chi%d%dim))
+    
     do j = 1, no_parameters
-      call states_copy(oppsi, psi)
+
       dl(j) = M_z0
       do ik = 1, psi%d%nik
         do p = 1, psi%nst
-          oppsi%zdontusepsi(:, :, p, ik) = M_z0
+
+          call states_get_state(psi, gr%mesh, p, ik, zpsi)
+          
+          zoppsi = M_z0
           if(associated(hm%ep%a_static)) then
-            call zvlaser_operator_linear(hm%ep%lasers(j), gr%der, hm%d, psi%zdontusepsi(:, :, p, ik), &
-              oppsi%zdontusepsi(:, :, p, ik), ik, hm%ep%gyromagnetic_ratio, hm%ep%a_static)
+            call zvlaser_operator_linear(hm%ep%lasers(j), gr%der, hm%d, zpsi, &
+              zoppsi, ik, hm%ep%gyromagnetic_ratio, hm%ep%a_static)
           else
-            call zvlaser_operator_linear(hm%ep%lasers(j), gr%der, hm%d, psi%zdontusepsi(:, :, p, ik), &
-              oppsi%zdontusepsi(:, :, p, ik), ik, hm%ep%gyromagnetic_ratio)
+            call zvlaser_operator_linear(hm%ep%lasers(j), gr%der, hm%d, zpsi, &
+              zoppsi, ik, hm%ep%gyromagnetic_ratio)
           end if
-          dl(j) = dl(j) + zmf_dotp(gr%mesh, psi%d%dim, chi%zdontusepsi(:, :, p, ik), &
-            oppsi%zdontusepsi(:, :, p, ik))
+
+          call states_get_state(chi, gr%mesh, p, ik, zpsi)
+          dl(j) = dl(j) + zmf_dotp(gr%mesh, psi%d%dim, zpsi, zoppsi)
         end do
       end do
-      call states_end(oppsi)
 
       ! The quadratic part should only be computed if necessary.
       if(laser_kind(hm%ep%lasers(j)) == E_FIELD_MAGNETIC ) then
-        call states_copy(oppsi, psi)
+
         dq(j) = M_z0
         do ik = 1, psi%d%nik
           do p = 1, psi%nst
-            oppsi%zdontusepsi(:, :, p, ik) = M_z0
-            call zvlaser_operator_quadratic(hm%ep%lasers(j), gr%der, &
-              psi%zdontusepsi(:, :, p, ik), oppsi%zdontusepsi(:, :, p, ik))
-            dq(j) = dq(j) + zmf_dotp(gr%mesh, psi%d%dim, &
-              chi%zdontusepsi(:, :, p, ik), oppsi%zdontusepsi(:, :, p, ik))
+            zoppsi = M_z0
+
+            call states_get_state(psi, gr%mesh, p, ik, zpsi)
+            call zvlaser_operator_quadratic(hm%ep%lasers(j), gr%der, zpsi, zoppsi)
+
+            call states_get_state(chi, gr%mesh, p, ik, zpsi)
+            dq(j) = dq(j) + zmf_dotp(gr%mesh, psi%d%dim, zpsi, zoppsi)
+            
           end do
         end do
-        call states_end(oppsi)
+
       else
         dq(j) = M_z0
       end if
     end do
 
+    SAFE_DEALLOCATE_A(zpsi)
+    SAFE_DEALLOCATE_A(zoppsi)
+    
     POP_SUB(calculate_g)
   end subroutine calculate_g
   ! ---------------------------------------------------------
@@ -964,7 +979,7 @@ contains
     character(len=1),          intent(in)    :: dir
 
     CMPLX :: d1, pol(MAX_DIM)
-    CMPLX, allocatable  :: dl(:), dq(:)
+    CMPLX, allocatable  :: dl(:), dq(:), zpsi(:, :), zchi(:, :)
     FLOAT, allocatable :: d(:)
     integer :: j, no_parameters, iatom
     type(states_t), pointer :: psi, chi
@@ -985,8 +1000,18 @@ contains
     call calculate_g(gr, hm, psi, chi, dl, dq)
     d1 = M_z1
     if(zbr98_) then
-      d1 = zmf_dotp(gr%mesh, psi%d%dim, psi%zdontusepsi(:, :, 1, 1), chi%zdontusepsi(:, :, 1, 1))
-      forall(j = 1:no_parameters) d(j) = aimag(d1*dl(j)) / controlfunction_alpha(cp, j) 
+      SAFE_ALLOCATE(zpsi(1:gr%mesh%np, 1:psi%d%dim))
+      SAFE_ALLOCATE(zchi(1:gr%mesh%np, 1:chi%d%dim))
+
+      call states_get_state(psi, gr%mesh, 1, 1, zpsi)
+      call states_get_state(chi, gr%mesh, 1, 1, zchi)
+      
+      d1 = zmf_dotp(gr%mesh, psi%d%dim, zpsi, zchi)
+      forall(j = 1:no_parameters) d(j) = aimag(d1*dl(j)) / controlfunction_alpha(cp, j)
+
+      SAFE_DEALLOCATE_A(zpsi)
+      SAFE_DEALLOCATE_A(zchi)
+      
     elseif(gradients_) then
       forall(j = 1:no_parameters) d(j) = M_TWO * aimag(dl(j))
     else
@@ -1135,7 +1160,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing OCT propagation states restart."
       call messages_info(1)
     end if
@@ -1154,7 +1179,7 @@ contains
       end if
     end do
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing OCT propagation states restart done."
       call messages_info(1)
     end if
@@ -1185,7 +1210,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading OCT propagation states restart."
       call messages_info(1)
     end if
@@ -1204,7 +1229,7 @@ contains
       end if
     end do
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading OCT propagation states restart done."
       call messages_info(1)
     end if
@@ -1214,7 +1239,7 @@ contains
   ! ---------------------------------------------------------
 
 
-end module propagation_m
+end module propagation_oct_m
 
 !! Local Variables:
 !! mode: f90

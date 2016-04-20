@@ -15,40 +15,40 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: gauge_field.F90 14494 2015-08-01 19:36:45Z xavier $
+!! $Id: gauge_field.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module gauge_field_m
-  use derivatives_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use io_m
-  use lalg_basic_m
-  use logrid_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use parser_m
-  use profiling_m
-  use projector_m
-  use ps_m
-  use restart_m
-  use simul_box_m
-  use species_m
-  use splines_m
-  use states_m
-  use states_dim_m
-  use submesh_m
-  use symmetries_m
-  use symmetrizer_m
-  use symm_op_m
-  use tdfunction_m
-  use unit_m
-  use unit_system_m
-  use varinfo_m
+module gauge_field_oct_m
+  use derivatives_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use io_oct_m
+  use lalg_basic_oct_m
+  use logrid_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use projector_oct_m
+  use ps_oct_m
+  use restart_oct_m
+  use simul_box_oct_m
+  use species_oct_m
+  use splines_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use submesh_oct_m
+  use symmetries_oct_m
+  use symmetrizer_oct_m
+  use symm_op_oct_m
+  use tdfunction_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -343,7 +343,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing gauge field restart."
       call messages_info(1)
     end if
@@ -357,7 +357,7 @@ contains
     SAFE_DEALLOCATE_A(vecpot)
     if (err /= 0) ierr = ierr + 1
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing gauge field restart done."
       call messages_info(1)
     end if
@@ -385,7 +385,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading gauge field restart."
       call messages_info(1)
     end if
@@ -398,7 +398,7 @@ contains
     call gauge_field_set_vec_pot_vel(gfield, vecpot(:,2))
     SAFE_DEALLOCATE_A(vecpot)
     
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading gauge field restart done."
       call messages_info(1)
     end if
@@ -437,7 +437,7 @@ contains
   end subroutine gauge_field_get_force
 
 
-end module gauge_field_m
+end module gauge_field_oct_m
 
 !! Local Variables:
 !! mode: f90

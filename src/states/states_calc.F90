@@ -15,61 +15,62 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: states_calc.F90 14551 2015-09-08 03:49:38Z xavier $
+!! $Id: states_calc.F90 15204 2016-03-19 13:17:02Z xavier $
 
 #include "global.h"
 
-module states_calc_m
-  use batch_m
-  use batch_ops_m
-  use blas_m
-  use blacs_m
-  use blacs_proc_grid_m
+module states_calc_oct_m
+  use batch_oct_m
+  use batch_ops_oct_m
+  use blas_oct_m
+  use blacs_oct_m
+  use blacs_proc_grid_oct_m
   use iso_c_binding
 #ifdef HAVE_OPENCL
   use cl
-#ifdef HAVE_CLAMDBLAS
-  use clAmdBlas
+#ifdef HAVE_CLBLAS
+  use clblas
 #endif
 #endif
-  use cmplxscl_m
-  use comm_m
-  use derivatives_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hardware_m
-  use io_m
-  use kpoints_m
-  use lalg_adv_m
-  use lalg_basic_m
-  use lapack_m
-  use loct_m
-  use messages_m
-  use mesh_m
-  use mesh_batch_m
-  use mesh_function_m
-  use mpi_m
-  use mpi_lib_m
-  use multicomm_m
-  use octcl_kernel_m
-  use opencl_m
-  use parser_m
-  use pblas_m
-  use physics_op_m
-  use profiling_m
-  use restart_m
-  use sort_om
-  use scalapack_m
-  use simul_box_m
-  use smear_m
-  use states_m
-  use states_dim_m
-  use unit_m
-  use unit_system_m
-  use utils_m
-  use types_m
-  use varinfo_m
+  use cmplxscl_oct_m
+  use comm_oct_m
+  use derivatives_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hardware_oct_m
+  use io_oct_m
+  use kpoints_oct_m
+  use lalg_adv_oct_m
+  use lalg_basic_oct_m
+  use lapack_oct_m
+  use loct_oct_m
+  use messages_oct_m
+  use mesh_oct_m
+  use mesh_batch_oct_m
+  use mesh_function_oct_m
+  use mpi_oct_m
+  use mpi_lib_oct_m
+  use multicomm_oct_m
+  use octcl_kernel_oct_m
+  use opencl_oct_m
+  use parser_oct_m
+  use pblas_oct_m
+  use physics_op_oct_m
+  use profiling_oct_m
+  use restart_oct_m
+  use sort_oct_m
+  use scalapack_oct_m
+  use simul_box_oct_m
+  use smear_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use states_parallel_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use utils_oct_m
+  use types_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -78,10 +79,7 @@ module states_calc_m
   public ::                         &
     states_orthogonalize,           &
     states_degeneracy_matrix,       &
-    dstates_rotate,                 &
-    zstates_rotate,                 &
-    dstates_rotate_in_place,        &
-    zstates_rotate_in_place,        &
+    states_rotate,                  &
     dstates_calc_orth_test,         &
     zstates_calc_orth_test,         &
     dstates_orthogonalization,      &
@@ -102,12 +100,11 @@ module states_calc_m
     dstates_calc_overlap,           &
     zstates_calc_overlap,           &
     states_orthogonalize_cproduct,  &
-    states_sort_complex,            &
-    states_gather
+    states_sort_complex
 
-  interface states_gather
-    module procedure dstates_gather, zstates_gather
-  end interface states_gather
+  interface states_rotate
+    module procedure dstates_rotate, zstates_rotate
+  end interface states_rotate
   
 contains
 
@@ -416,7 +413,7 @@ contains
 #include "states_calc_inc.F90"
 #include "undef.F90"
 
-end module states_calc_m
+end module states_calc_oct_m
 
 
 !! Local Variables:

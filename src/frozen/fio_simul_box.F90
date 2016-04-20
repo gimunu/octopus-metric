@@ -1,17 +1,17 @@
 #include "global.h"
 
-module fio_simul_box_m
+module fio_simul_box_oct_m
 
-  use geometry_m
-  use global_m
-  use json_m
-  use kpoints_m
-  use mpi_m
-  use messages_m
-  use profiling_m
-  use simul_box_m
-  use space_m
-  use symmetries_m
+  use geometry_oct_m
+  use global_oct_m
+  use json_oct_m
+  use kpoints_oct_m
+  use mpi_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
+  use space_oct_m
+  use symmetries_oct_m
 
   implicit none
 
@@ -51,10 +51,8 @@ contains
       call symmetries_init(this%symm, geo, this%dim, this%periodic_dim, this%rlattice)
       call kpoints_init(this%kpoints, this%symm, this%dim, this%rlattice, this%klattice, .true.)
     else
-      message(1) = "Error reading the simulation box info file: '"//trim(adjustl(file))//"'"
-      message(2) = "from the directory: '"//trim(adjustl(dir))//"'"
-      write(unit=message(3), fmt="(a,i10)") "I/O Error: ", ierr
-      call messages_fatal(3)
+      message(1) = "Could not read from the input file."
+      call messages_fatal(1)
     end if
 
     POP_SUB(fio_simul_box_init)
@@ -83,7 +81,7 @@ contains
     POP_SUB(fio_simul_box_end)
   end subroutine fio_simul_box_end
 
-end module fio_simul_box_m
+end module fio_simul_box_oct_m
 
 !! Local Variables:
 !! mode: f90

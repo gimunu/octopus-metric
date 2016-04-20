@@ -2,7 +2,6 @@
 #CalculationMode = td
 CalculationMode = opt_control
 
-DebugLevel = 0
 ExperimentalFeatures = yes
 
 Dimensions = 2
@@ -32,14 +31,14 @@ EigenSolverTolerance = 1.0e-12
 SCFCalculateForces = yes
 
 Mixing = 1.0
-TypeOfMixing = linear
+MixingScheme = linear
 
 MoveIons = yes
 
 stime  = 1.0
 dt = stime/100
 
-AbsorbingBoundaries = sin2
+AbsorbingBoundaries = cap
 AbWidth = 2.0
 AbHeight = -3.0
 
@@ -88,7 +87,7 @@ OCTTargetOperator = oct_tg_classical
 
 #OCTCheckGradient = 0.001
 OCTDirectStep = 0.1
-OCTScheme = oct_algorithm_bfgs
+OCTScheme = oct_bfgs
 OCTControlFunctionRepresentation = control_fourier_series_h
 OCTControlFunctionOmegaMax = 10.0
 

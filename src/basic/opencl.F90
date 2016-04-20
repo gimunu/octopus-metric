@@ -15,29 +15,29 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: opencl.F90 14690 2015-10-22 22:59:28Z jrfsousa $
+!! $Id: opencl.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module opencl_m
+module opencl_oct_m
 #ifdef HAVE_OPENCL
   use cl
 #endif
-#ifdef HAVE_CLAMDBLAS
-  use clAmdBlas
+#ifdef HAVE_CLBLAS
+  use clblas
 #endif
-#ifdef HAVE_CLAMDFFT
-  use clAmdFft
+#ifdef HAVE_CLFFT
+  use clfft
 #endif
-  use global_m
-  use io_m
-  use loct_m
-  use messages_m
-  use mpi_m
-  use types_m
-  use parser_m
-  use profiling_m
-  use unit_system_m
+  use global_oct_m
+  use io_oct_m
+  use loct_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use types_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use unit_system_oct_m
 
   implicit none 
 
@@ -115,9 +115,6 @@ module opencl_m
   type(cl_kernel), public :: dkernel_dot_matrix
   type(cl_kernel), public :: zkernel_dot_matrix
   type(cl_kernel), public :: zkernel_dot_matrix_spinors
-  type(cl_kernel), public :: dkernel_dot_vector
-  type(cl_kernel), public :: zkernel_dot_vector
-  type(cl_kernel), public :: kernel_nrm2_vector
   type(cl_kernel), public :: dzmul
   type(cl_kernel), public :: zzmul
 
@@ -484,12 +481,9 @@ contains
     call opencl_release_program(prog)
 
     call opencl_build_program(prog, trim(conf%share)//'/opencl/mesh_batch.cl')
-    call opencl_create_kernel(dkernel_dot_vector, prog, "ddot_vector")
-    call opencl_create_kernel(zkernel_dot_vector, prog, "zdot_vector")
     call opencl_create_kernel(dkernel_dot_matrix, prog, "ddot_matrix")
     call opencl_create_kernel(zkernel_dot_matrix, prog, "zdot_matrix")
     call opencl_create_kernel(zkernel_dot_matrix_spinors, prog, "zdot_matrix_spinors")
-    call opencl_create_kernel(kernel_nrm2_vector, prog, "nrm2_vector")
     call opencl_release_program(prog)
 
     call opencl_build_program(prog, trim(conf%share)//'/opencl/mul.cl', flags = '-DRTYPE_DOUBLE')
@@ -500,14 +494,14 @@ contains
     call opencl_create_kernel(zzmul, prog, "zzmul")
     call opencl_release_program(prog)
 
-#ifdef HAVE_CLAMDBLAS
-    call clAmdBlasSetup(cl_status)
-    if(cl_status /= clAmdBlasSuccess) call clblas_print_error(cl_status, 'clAmdBlasSetup')
+#ifdef HAVE_CLBLAS
+    call clblasSetup(cl_status)
+    if(cl_status /= clblasSuccess) call clblas_print_error(cl_status, 'clblasSetup')
 #endif
 
-#ifdef HAVE_CLAMDFFT
-    call clAmdFftSetup(cl_status)
-    if(cl_status /= CLFFT_SUCCESS) call clfft_print_error(cl_status, 'clAmdFftSetup')
+#ifdef HAVE_CLFFT
+    call clfftSetup(cl_status)
+    if(cl_status /= CLFFT_SUCCESS) call clfft_print_error(cl_status, 'clfftSetup')
 #endif
 
     call profiling_out(prof_init)
@@ -679,12 +673,12 @@ contains
 
     PUSH_SUB(opencl_end)
 
-#ifdef HAVE_CLAMDBLAS
-    call clAmdBlasTearDown()
+#ifdef HAVE_CLBLAS
+    call clblasTearDown()
 #endif
 
-#ifdef HAVE_CLAMDFFT
-    call clAmdFftTearDown()
+#ifdef HAVE_CLFFT
+    call clfftTearDown()
 #endif
 
     if(opencl_is_enabled()) then
@@ -705,8 +699,6 @@ contains
       call opencl_release_kernel(kernel_phase)
       call opencl_release_kernel(dkernel_dot_matrix)
       call opencl_release_kernel(zkernel_dot_matrix)
-      call opencl_release_kernel(dkernel_dot_vector)
-      call opencl_release_kernel(zkernel_dot_vector)
       call opencl_release_kernel(zkernel_dot_matrix_spinors)
 
 
@@ -986,10 +978,10 @@ contains
 
     share_string='-I'//trim(conf%share)//'/opencl/'
 
-    if (f90_cl_device_has_extension(opencl%device, "cl_amd_fp64")) then
-      string = trim(string)//' -DEXT_AMD_FP64'
-    else if(f90_cl_device_has_extension(opencl%device, "cl_khr_fp64")) then
+    if (f90_cl_device_has_extension(opencl%device, "cl_khr_fp64")) then
       string = trim(string)//' -DEXT_KHR_FP64'
+    else if(f90_cl_device_has_extension(opencl%device, "cl_amd_fp64")) then
+      string = trim(string)//' -DEXT_AMD_FP64'
     else
       call messages_write('Octopus requires an OpenCL device with double-precision support.')
       call messages_fatal()
@@ -1003,7 +995,7 @@ contains
       string = trim(string)//' '//trim(flags)
     end if
 
-    if(in_debug_mode) then
+    if(debug%info) then
       call messages_write("Debug info: compilation flags '"//trim(string), new_line = .true.)
       call messages_write('  '//trim(share_string)//"'.")
       call messages_info()
@@ -1156,45 +1148,45 @@ contains
     character(len=40) :: errcode
 
     PUSH_SUB(clblas_print_error)
-#ifdef HAVE_CLAMDBLAS
+#ifdef HAVE_CLBLAS
     select case(ierr)
-    case(clAmdBlasSuccess);                    errcode = 'clAmdBlasSuccess'
-    case(clAmdBlasInvalidValue);               errcode = 'clAmdBlasInvalidValue'
-    case(clAmdBlasInvalidCommandQueue);        errcode = 'clAmdBlasInvalidCommandQueue'
-    case(clAmdBlasInvalidContext);             errcode = 'clAmdBlasInvalidContext'
-    case(clAmdBlasInvalidMemObject);           errcode = 'clAmdBlasInvalidMemObject'
-    case(clAmdBlasInvalidDevice);              errcode = 'clAmdBlasInvalidDevice'
-    case(clAmdBlasInvalidEventWaitList);       errcode = 'clAmdBlasInvalidEventWaitList'
-    case(clAmdBlasOutOfResources);             errcode = 'clAmdBlasOutOfResources'
-    case(clAmdBlasOutOfHostMemory);            errcode = 'clAmdBlasOutOfHostMemory'
-    case(clAmdBlasInvalidOperation);           errcode = 'clAmdBlasInvalidOperation'
-    case(clAmdBlasCompilerNotAvailable);       errcode = 'clAmdBlasCompilerNotAvailable'
-    case(clAmdBlasBuildProgramFailure );       errcode = 'clAmdBlasBuildProgramFailure'
-    case(clAmdBlasNotImplemented);             errcode = 'clAmdBlasNotImplemented'
-    case(clAmdBlasNotInitialized);             errcode = 'clAmdBlasNotInitialized'
-    case(clAmdBlasInvalidMatA);                errcode = 'clAmdBlasInvalidMatA'
-    case(clAmdBlasInvalidMatB);                errcode = 'clAmdBlasInvalidMatB'
-    case(clAmdBlasInvalidMatC);                errcode = 'clAmdBlasInvalidMatC'
-    case(clAmdBlasInvalidVecX);                errcode = 'clAmdBlasInvalidVecX'
-    case(clAmdBlasInvalidVecY);                errcode = 'clAmdBlasInvalidVecY'
-    case(clAmdBlasInvalidDim);                 errcode = 'clAmdBlasInvalidDim'
-    case(clAmdBlasInvalidLeadDimA);            errcode = 'clAmdBlasInvalidLeadDimA'
-    case(clAmdBlasInvalidLeadDimB);            errcode = 'clAmdBlasInvalidLeadDimB'
-    case(clAmdBlasInvalidLeadDimC);            errcode = 'clAmdBlasInvalidLeadDimC'
-    case(clAmdBlasInvalidIncX);                errcode = 'clAmdBlasInvalidIncX'
-    case(clAmdBlasInvalidIncY);                errcode = 'clAmdBlasInvalidIncY'
-    case(clAmdBlasInsufficientMemMatA);        errcode = 'clAmdBlasInsufficientMemMatA'
-    case(clAmdBlasInsufficientMemMatB);        errcode = 'clAmdBlasInsufficientMemMatB'
-    case(clAmdBlasInsufficientMemMatC);        errcode = 'clAmdBlasInsufficientMemMatC'
-    case(clAmdBlasInsufficientMemVecX);        errcode = 'clAmdBlasInsufficientMemVecX'
-    case(clAmdBlasInsufficientMemVecY);        errcode = 'clAmdBlasInsufficientMemVecY'
+    case(clblasSuccess);                    errcode = 'clblasSuccess'
+    case(clblasInvalidValue);               errcode = 'clblasInvalidValue'
+    case(clblasInvalidCommandQueue);        errcode = 'clblasInvalidCommandQueue'
+    case(clblasInvalidContext);             errcode = 'clblasInvalidContext'
+    case(clblasInvalidMemObject);           errcode = 'clblasInvalidMemObject'
+    case(clblasInvalidDevice);              errcode = 'clblasInvalidDevice'
+    case(clblasInvalidEventWaitList);       errcode = 'clblasInvalidEventWaitList'
+    case(clblasOutOfResources);             errcode = 'clblasOutOfResources'
+    case(clblasOutOfHostMemory);            errcode = 'clblasOutOfHostMemory'
+    case(clblasInvalidOperation);           errcode = 'clblasInvalidOperation'
+    case(clblasCompilerNotAvailable);       errcode = 'clblasCompilerNotAvailable'
+    case(clblasBuildProgramFailure );       errcode = 'clblasBuildProgramFailure'
+    case(clblasNotImplemented);             errcode = 'clblasNotImplemented'
+    case(clblasNotInitialized);             errcode = 'clblasNotInitialized'
+    case(clblasInvalidMatA);                errcode = 'clblasInvalidMatA'
+    case(clblasInvalidMatB);                errcode = 'clblasInvalidMatB'
+    case(clblasInvalidMatC);                errcode = 'clblasInvalidMatC'
+    case(clblasInvalidVecX);                errcode = 'clblasInvalidVecX'
+    case(clblasInvalidVecY);                errcode = 'clblasInvalidVecY'
+    case(clblasInvalidDim);                 errcode = 'clblasInvalidDim'
+    case(clblasInvalidLeadDimA);            errcode = 'clblasInvalidLeadDimA'
+    case(clblasInvalidLeadDimB);            errcode = 'clblasInvalidLeadDimB'
+    case(clblasInvalidLeadDimC);            errcode = 'clblasInvalidLeadDimC'
+    case(clblasInvalidIncX);                errcode = 'clblasInvalidIncX'
+    case(clblasInvalidIncY);                errcode = 'clblasInvalidIncY'
+    case(clblasInsufficientMemMatA);        errcode = 'clblasInsufficientMemMatA'
+    case(clblasInsufficientMemMatB);        errcode = 'clblasInsufficientMemMatB'
+    case(clblasInsufficientMemMatC);        errcode = 'clblasInsufficientMemMatC'
+    case(clblasInsufficientMemVecX);        errcode = 'clblasInsufficientMemVecX'
+    case(clblasInsufficientMemVecY);        errcode = 'clblasInsufficientMemVecY'
     case default
       write(errcode, '(i10)') ierr
       errcode = 'UNKNOWN ERROR CODE ('//trim(adjustl(errcode))//')'
     end select
 #endif
 
-    message(1) = 'clAmdBlas '//trim(name)//' '//trim(errcode)
+    message(1) = 'clblas '//trim(name)//' '//trim(errcode)
     call messages_fatal(1)
 
     POP_SUB(clblas_print_error)
@@ -1208,7 +1200,7 @@ contains
     character(len=40) :: errcode
 
     PUSH_SUB(clfft_print_error)
-#ifdef HAVE_CLAMDFFT
+#ifdef HAVE_CLFFT
     select case(ierr)
     case(CLFFT_INVALID_GLOBAL_WORK_SIZE);          errcode = 'CLFFT_INVALID_GLOBAL_WORK_SIZE' 
     case(CLFFT_INVALID_MIP_LEVEL);                 errcode = 'CLFFT_INVALID_MIP_LEVEL' 
@@ -1271,7 +1263,7 @@ contains
     end select
 #endif
 
-    message(1) = 'clAmdFft '//trim(name)//' '//trim(errcode)
+    message(1) = 'clfft '//trim(name)//' '//trim(errcode)
     call messages_fatal(1)
 
     POP_SUB(clfft_print_error)
@@ -1425,7 +1417,7 @@ contains
 
 #endif
 
-end module opencl_m
+end module opencl_oct_m
 
 !! Local Variables:
 !! mode: f90

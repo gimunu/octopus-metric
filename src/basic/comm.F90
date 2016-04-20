@@ -15,16 +15,16 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: comm.F90 12883 2015-02-07 05:33:52Z xavier $
+!! $Id: comm.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module comm_m
-  use global_m
-  use messages_m
-  use mpi_m
-  use types_m
-  use profiling_m
+module comm_oct_m
+  use global_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use types_oct_m
+  use profiling_oct_m
 
   implicit none 
 
@@ -39,6 +39,7 @@ module comm_m
     module procedure dcomm_allreduce_2, zcomm_allreduce_2, scomm_allreduce_2, ccomm_allreduce_2, icomm_allreduce_2
     module procedure dcomm_allreduce_3, zcomm_allreduce_3, scomm_allreduce_3, ccomm_allreduce_3, icomm_allreduce_3
     module procedure dcomm_allreduce_4, zcomm_allreduce_4, scomm_allreduce_4, ccomm_allreduce_4, icomm_allreduce_4
+    module procedure dcomm_allreduce_5, zcomm_allreduce_5, scomm_allreduce_5, ccomm_allreduce_5, icomm_allreduce_5
   end interface
 
 contains
@@ -63,7 +64,7 @@ contains
 #include "integer.F90"
 #include "comm_inc.F90"
 
-end module comm_m
+end module comm_oct_m
 
 !! Local Variables:
 !! mode: f90

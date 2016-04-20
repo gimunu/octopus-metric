@@ -15,25 +15,25 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: kdotp_calc.F90 14541 2015-09-06 15:13:42Z xavier $
+!! $Id: kdotp_calc.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module kdotp_calc_m
-  use global_m
-  use hamiltonian_m
-  use linear_response_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use pert_m
-  use profiling_m
-  use states_m
-  use states_calc_m
-  use sternheimer_m
-  use system_m
-  use utils_m
+module kdotp_calc_oct_m
+  use global_oct_m
+  use hamiltonian_oct_m
+  use linear_response_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use pert_oct_m
+  use profiling_oct_m
+  use states_oct_m
+  use states_calc_oct_m
+  use sternheimer_oct_m
+  use system_oct_m
+  use utils_oct_m
 
   implicit none
 
@@ -131,10 +131,13 @@ subroutine zcalc_dipole_periodic(sys, lr, dipole)
   integer idir, ist, ik, idim
   type(mesh_t), pointer :: mesh
   CMPLX :: term, moment
+  CMPLX, allocatable :: psi(:, :)
   mesh => sys%gr%mesh
 
   PUSH_SUB(zcalc_dipole_periodic)
 
+  SAFE_ALLOCATE(psi(1:sys%gr%mesh%np, 1:sys%st%d%dim))
+  
   do idir = 1, sys%gr%sb%periodic_dim
     moment = M_ZERO
 
@@ -142,20 +145,24 @@ subroutine zcalc_dipole_periodic(sys, lr, dipole)
       term = M_ZERO
 
       do ist = 1, sys%st%nst
+
+        call states_get_state(sys%st, sys%gr%mesh, ist, ik, psi)
+        
         do idim = 1, sys%st%d%dim
-          term = term + zmf_dotp(mesh, sys%st%zdontusepsi(1:mesh%np, idim, ist, ik), &
-            lr(1, idir)%zdl_psi(1:mesh%np, idim, ist, ik))
+          term = term + zmf_dotp(mesh, psi(1:mesh%np, idim), lr(1, idir)%zdl_psi(1:mesh%np, idim, ist, ik))
         end do
+        
       end do
 
-      moment = moment + term * sys%st%d%kweights(ik) * sys%st%smear%el_per_state
+      moment = moment + term*sys%st%d%kweights(ik)*sys%st%smear%el_per_state
     end do
 
     dipole(idir) = -moment
   end do
 
-  POP_SUB(zcalc_dipole_periodic)
+  SAFE_DEALLOCATE_A(psi)
 
+  POP_SUB(zcalc_dipole_periodic)
 end subroutine zcalc_dipole_periodic
 
 #include "undef.F90"
@@ -166,7 +173,7 @@ end subroutine zcalc_dipole_periodic
 #include "complex.F90"
 #include "kdotp_calc_inc.F90"
 
-end module kdotp_calc_m
+end module kdotp_calc_oct_m
 
 !! Local Variables:
 !! mode: f90

@@ -15,34 +15,34 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: mesh_init.F90 14624 2015-10-03 13:39:53Z xavier $
+!! $Id: mesh_init.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module mesh_init_m
-  use checksum_interface_m
-  use cube_m
-  use curvilinear_m
-  use geometry_m
-  use global_m
-  use hypercube_m
-  use index_m
-  use io_m
-  use loct_m
-  use math_m
-  use mesh_m
-  use mesh_cube_map_m
-  use mesh_partition_m
-  use messages_m
-  use mpi_m
-  use multicomm_m
-  use par_vec_m
-  use parser_m
-  use partition_m
-  use profiling_m
-  use simul_box_m
-  use stencil_m
-  use subarray_m
+module mesh_init_oct_m
+  use checksum_interface_oct_m
+  use cube_oct_m
+  use curvilinear_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use hypercube_oct_m
+  use index_oct_m
+  use io_oct_m
+  use loct_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_cube_map_oct_m
+  use mesh_partition_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use multicomm_oct_m
+  use par_vec_oct_m
+  use parser_oct_m
+  use partition_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
+  use stencil_oct_m
+  use subarray_oct_m
 
   implicit none
   
@@ -441,8 +441,8 @@ end subroutine mesh_init_stage_2
 ! ---------------------------------------------------------
 subroutine mesh_init_stage_3(mesh, stencil, mpi_grp, parent)
   type(mesh_t),              intent(inout) :: mesh
-  type(stencil_t), optional, intent(in)    :: stencil
-  type(mpi_grp_t), optional, intent(in)    :: mpi_grp
+  type(stencil_t),           intent(in)    :: stencil
+  type(mpi_grp_t),           intent(in)    :: mpi_grp
   type(mesh_t),    optional, intent(in)    :: parent
 
   integer :: ip
@@ -451,11 +451,7 @@ subroutine mesh_init_stage_3(mesh, stencil, mpi_grp, parent)
   call profiling_in(mesh_init_prof, "MESH_INIT")
 
   ! check if we are running in parallel in domains
-  mesh%parallel_in_domains = .false.
-  if(present(mpi_grp)) then
-    if (mpi_grp%size > 1) mesh%parallel_in_domains = .true.
-  end if
-
+  mesh%parallel_in_domains = (mpi_grp%size > 1)
 
   if(.not. mesh%parallel_in_domains) then
     ! When running parallel, x is computed later.
@@ -470,20 +466,13 @@ subroutine mesh_init_stage_3(mesh, stencil, mpi_grp, parent)
     end do
   end if
 
+  mesh%mpi_grp = mpi_grp 
+  
   if(mesh%parallel_in_domains) then
-    ASSERT(present(stencil))
-    
+
     call do_partition()
+
   else
-#ifdef HAVE_MPI
-    if (present(mpi_grp)) then
-      mesh%mpi_grp = mpi_grp 
-    else
-      call mpi_grp_init(mesh%mpi_grp, MPI_COMM_WORLD)
-    end if
-#else
-    call mpi_grp_init(mesh%mpi_grp, -1)
-#endif
 
     ! When running serially those two are the same.
     mesh%np      = mesh%np_global
@@ -808,8 +797,6 @@ contains
 
     PUSH_SUB(mesh_init_stage_3.do_partition)
 
-    mesh%mpi_grp = mpi_grp
-
     !%Variable MeshPartitionDir
     !%Type string
     !%Default "restart/partition"
@@ -887,13 +874,13 @@ contains
 
       !%Variable MeshPartitionWrite
       !%Type logical
-      !%Default true
+      !%Default false
       !%Section Execution::Parallelization
       !%Description
       !% If set to yes (the default), <tt>Octopus</tt> will write the mesh
       !% partition of the current run to directory <tt>MeshPartitionDir</tt>.
       !%End
-      call parse_variable('MeshPartitionWrite', .true., write_partition)
+      call parse_variable('MeshPartitionWrite', .false., write_partition)
 
       if (mpi_grp_is_root(mesh%mpi_grp)) then
         call io_mkdir(trim(partition_dir), parents=.true.)
@@ -1240,7 +1227,7 @@ contains
 
 end subroutine mesh_init_stage_3
 
-end module mesh_init_m
+end module mesh_init_oct_m
 
 !! Local Variables:
 !! mode: f90

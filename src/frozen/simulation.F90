@@ -1,18 +1,18 @@
 #include "global.h"
 
-module simulation_m
+module simulation_oct_m
 
-  use derivatives_m
-  use domain_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use grid_intrf_m
-  use json_m
-  use mesh_m
-  use messages_m
-  use profiling_m
-  use space_m
+  use derivatives_oct_m
+  use domain_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use grid_intrf_oct_m
+  use json_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use space_oct_m
 
   implicit none
 
@@ -22,6 +22,7 @@ module simulation_m
     simulation_t
 
   public ::            &
+    simulation_assoc,  &
     simulation_init,   &
     simulation_start,  &
     simulation_extend, &
@@ -37,6 +38,11 @@ module simulation_m
     type(domain_t)               :: domain
   end type simulation_t
 
+  interface simulation_init
+    module procedure simulation_init_config
+    module procedure simulation_init_type
+  end interface simulation_init
+
   interface simulation_get
     module procedure simulation_get_config
     module procedure simulation_get_info
@@ -49,6 +55,19 @@ module simulation_m
   end interface simulation_get
 
 contains
+
+  ! ---------------------------------------------------------
+  function simulation_assoc(this) result(that)
+    type(simulation_t), intent(in) :: this
+
+    logical :: that
+
+    PUSH_SUB(simulation_assoc)
+
+    that = grid_intrf_assoc(this%igrid)
+
+    POP_SUB(simulation_assoc)
+  end function simulation_assoc
 
   ! ---------------------------------------------------------
   subroutine simulation__init__(this, space, config)
@@ -65,7 +84,25 @@ contains
   end subroutine simulation__init__
 
   ! ---------------------------------------------------------
-  subroutine simulation_init(this, geo, space, config)
+  subroutine simulation_init_config(this)
+    type(json_object_t), intent(out) :: this
+
+    type(json_object_t), pointer :: cnfg
+
+    PUSH_SUB(simulation_init_config)
+
+    nullify(cnfg)
+    call json_init(this)
+    SAFE_ALLOCATE(cnfg)
+    call grid_intrf_init(cnfg)
+    call json_set(this, "grid", cnfg)
+    nullify(cnfg)
+
+    POP_SUB(simulation_init_config)
+  end subroutine simulation_init_config
+
+  ! ---------------------------------------------------------
+  subroutine simulation_init_type(this, geo, space, config)
     type(simulation_t),  intent(out) :: this
     type(geometry_t),    intent(in)  :: geo
     type(space_t),       intent(in)  :: space
@@ -74,7 +111,7 @@ contains
     type(json_object_t), pointer :: cnfg
     integer                      :: ierr
 
-    PUSH_SUB(simulation_init)
+    PUSH_SUB(simulation_init_type)
 
     nullify(cnfg)
     call simulation__init__(this, space, config)
@@ -84,8 +121,8 @@ contains
     nullify(cnfg)
     call domain_init(this%domain, space)
 
-    POP_SUB(simulation_init)
-  end subroutine simulation_init
+    POP_SUB(simulation_init_type)
+  end subroutine simulation_init_type
 
   ! ---------------------------------------------------------
   subroutine simulation__start__(this, grid)
@@ -110,7 +147,7 @@ contains
     PUSH_SUB(simulation_start)
 
     call simulation__start__(this, grid)
-    call grid_intrf_start(this%igrid)
+    ASSERT(grid_intrf_assoc(this%igrid))
     call domain_start(this%domain, this%igrid)
 
     POP_SUB(simulation_start)
@@ -282,7 +319,7 @@ contains
     POP_SUB(simulation_end)
   end subroutine simulation_end
 
-end module simulation_m
+end module simulation_oct_m
 
 !! Local Variables:
 !! mode: f90

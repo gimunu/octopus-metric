@@ -1,15 +1,15 @@
 #include "global.h"
 
-module geo_intrf_m
+module geo_intrf_oct_m
 
-  use atom_m
-  use geometry_m
-  use global_m
-  use json_m
-  use messages_m
-  use profiling_m
-  use space_m
-  use species_m
+  use atom_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use json_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use space_oct_m
+  use species_oct_m
 
   implicit none
 
@@ -21,14 +21,15 @@ module geo_intrf_m
   public ::               &
     geo_intrf_iterator_t
 
-  public ::         &
-    geo_intrf_new,  &
-    geo_intrf_del,  &
-    geo_intrf_init, &
-    geo_intrf_next, &
-    geo_intrf_set,  &
-    geo_intrf_get,  &
-    geo_intrf_copy, &
+  public ::          &
+    geo_intrf_new,   &
+    geo_intrf_del,   &
+    geo_intrf_assoc, &
+    geo_intrf_init,  &
+    geo_intrf_next,  &
+    geo_intrf_set,   &
+    geo_intrf_get,   &
+    geo_intrf_copy,  &
     geo_intrf_end
 
   public ::          &
@@ -120,9 +121,9 @@ contains
 
     interface
       subroutine geo_init(this, space, config)
-        use geometry_m
-        use json_m
-        use space_m
+        use geometry_oct_m
+        use json_oct_m
+        use space_oct_m
         type(geometry_t),    intent(out) :: this
         type(space_t),       intent(in)  :: space
         type(json_object_t), intent(in)  :: config
@@ -155,6 +156,30 @@ contains
   end subroutine geo_intrf_del
 
   ! ---------------------------------------------------------
+  function geo_intrf_assoc(this) result(that)
+    type(geo_intrf_t), intent(in) :: this
+
+    logical :: that
+
+    PUSH_SUB(geo_intrf_assoc)
+
+    ASSERT(associated(this%config))
+    ASSERT(associated(this%space))
+    select case(this%type)
+    case(GEO_NULL)
+      ASSERT(.not.associated(this%pgeo))
+      that = .false.
+    case(GEO_ASSC,GEO_ALLC)
+      ASSERT(associated(this%pgeo))
+      that = .true.
+    case default
+      ASSERT(.false.)
+    end select
+
+    POP_SUB(geo_intrf_assoc)
+  end function geo_intrf_assoc
+
+  ! ---------------------------------------------------------
   subroutine geo_intrf_init_type(this, space, config)
     type(geo_intrf_t),           intent(out) :: this
     type(space_t),       target, intent(in)  :: space
@@ -175,7 +200,7 @@ contains
     type(geo_intrf_t), intent(out) :: this
     type(geo_intrf_t), intent(in)  :: that
 
-    PUSH_SUB(geo_intrf_init_type)
+    PUSH_SUB(geo_intrf_init_copy)
     
     ASSERT(associated(that%config))
     ASSERT(associated(that%space))
@@ -388,7 +413,7 @@ contains
     POP_SUB(geo_intrf_iterator_end)
   end subroutine geo_intrf_iterator_end
 
-end module geo_intrf_m
+end module geo_intrf_oct_m
 
 !! Local Variables:
 !! mode: f90

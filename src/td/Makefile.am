@@ -17,7 +17,7 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: Makefile.am 13897 2015-05-01 12:11:05Z xavier $
+## $Id: Makefile.am 15192 2016-03-09 17:48:30Z umberto $
 
 noinst_LIBRARIES = libtd.a
 
@@ -27,7 +27,7 @@ libtd_a_SOURCES =                         \
 	td_calc.F90                       \
 	td_write.F90                      \
 	td.F90                            \
-	pes_rc.F90                        \
+	pes_spm.F90                       \
 	pes_mask.F90                      \
 	pes_flux.F90                      \
 	potential_interpolation.F90       \
@@ -41,17 +41,18 @@ libtd_a_SOURCES =                         \
 	propagator.F90
 
 noinst_HEADERS =                          \
-	pes_mask_out_inc.F90
+	pes_mask_out_inc.F90               \
+  pes_flux_out_inc.F90   
 
 include $(srcdir)/../common-rules.make
 
 depend:
 	@makedepf90 $(libtd_a_SOURCES)
 
-pes.o: pes.F90 pes_mask.o pes_rc.o pes_flux.o
-pes_rc.o : pes_rc.F90
+pes.o: pes.F90 pes_mask.o pes_spm.o pes_flux.o
+pes_spm.o : pes_spm.F90
 pes_mask.o : pes_mask.F90 pes_mask_out_inc.F90
-pes_flux.o : pes_flux.F90
+pes_flux.o : pes_flux.F90 pes_flux_out_inc.F90
 spectrum.o: spectrum.F90
 propagator_base.o : propagator_base.F90 potential_interpolation.o
 propagator_cn.o : propagator_cn.F90 propagator_base.o

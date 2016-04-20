@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: nl_operator_inc.F90 14221 2015-06-05 16:37:56Z xavier $
+!! $Id: nl_operator_inc.F90 14840 2015-11-29 06:05:24Z xavier $
 
 ! ---------------------------------------------------------
 
@@ -30,7 +30,7 @@ subroutine X(nl_operator_operate_batch)(op, fi, fo, ghost_update, profile, point
 
   integer :: ist, points_
   real(8) :: cop
-  logical :: ghost_update_, profile_
+  logical :: ghost_update_, profile_, use_opencl
   integer :: nri, nri_loc, ini
   integer, pointer :: imin(:), imax(:), ri(:, :)
   R_TYPE,  pointer :: pfi(:), pfo(:)
@@ -44,6 +44,7 @@ subroutine X(nl_operator_operate_batch)(op, fi, fo, ghost_update, profile, point
   
   PUSH_SUB(X(nl_operator_operate_batch))
 
+  ASSERT(batch_status(fi) == batch_status(fo))
   ASSERT(batch_type(fi) == R_TYPE_VAL)
   ASSERT(batch_type(fo) == R_TYPE_VAL)
 
@@ -66,13 +67,15 @@ subroutine X(nl_operator_operate_batch)(op, fi, fo, ghost_update, profile, point
   ghost_update_ = .true.
   if(present(ghost_update)) ghost_update_ = ghost_update
 
-#ifdef HAVE_MPI
   if(op%mesh%parallel_in_domains .and. ghost_update_) then
+    ASSERT(.not. batch_is_packed(fi))
+    
     do ist = 1, fi%nst_linear
+#ifdef HAVE_MPI
       call X(vec_ghost_update)(op%mesh%vp, fi%states_linear(ist)%X(psi)(:))
+#endif
     end do
   end if
-#endif
 
 #ifdef R_TREAL
   if(op%cmplx_op) then
@@ -98,7 +101,9 @@ subroutine X(nl_operator_operate_batch)(op, fi, fo, ghost_update, profile, point
       end if
     end if
   end if
-    
+
+  use_opencl = .false.
+  
   if(nri > 0) then
     if(.not.op%const_w) then
       call operate_non_const_weights()
@@ -106,6 +111,7 @@ subroutine X(nl_operator_operate_batch)(op, fi, fo, ghost_update, profile, point
       call operate_const_weights()
 #ifdef HAVE_OPENCL
     else if(opencl_is_enabled() .and. batch_is_packed(fi) .and. batch_is_packed(fo)) then
+      use_opencl = .true.
       call operate_opencl()
 #endif
     else
@@ -137,7 +143,7 @@ subroutine X(nl_operator_operate_batch)(op, fi, fo, ghost_update, profile, point
     end if
 
     ! count operations
-    if(profile_) then
+    if(profile_ .and. .not. use_opencl) then
       if(op%cmplx_op) then
         cop = fi%nst_linear*dble(imax(nri) - imin(1))*op%stencil%size*(R_ADD + R_MUL)
       else
@@ -285,7 +291,7 @@ contains
 
   ! ------------------------------------------
   subroutine operate_opencl()
-    integer    :: pnri, bsize, isize, ist, eff_size
+    integer    :: pnri, bsize, isize, ist, eff_size, iarg, npoints
     integer(8) :: local_mem_size
     type(opencl_mem_t) :: buff_weights
     type(profile_t), save :: prof
@@ -295,8 +301,6 @@ contains
     call profiling_in(prof, "CL_NL_OPERATOR")
 
     kernel_operate = octcl_kernel_get_ref(op%kernel)
-
-    ASSERT(points_ == OP_ALL)
 
     call opencl_create_buffer(buff_weights, CL_MEM_READ_ONLY, TYPE_FLOAT, op%stencil%size)
 
@@ -308,6 +312,8 @@ contains
 
     select case(function_opencl)
     case(OP_INVMAP)
+      ASSERT(points_ == OP_ALL)
+     
       call opencl_set_kernel_arg(kernel_operate, 0, op%stencil%size)
       call opencl_set_kernel_arg(kernel_operate, 1, nri)
       call opencl_set_kernel_arg(kernel_operate, 2, op%buff_ri)
@@ -325,16 +331,16 @@ contains
       call opencl_kernel_run(kernel_operate, (/eff_size, pnri/), (/eff_size, bsize/eff_size/))
 
     case(OP_MAP)
-      call opencl_set_kernel_arg(kernel_operate, 0, op%stencil%size)
-      call opencl_set_kernel_arg(kernel_operate, 1, op%mesh%np)
-      call opencl_set_kernel_arg(kernel_operate, 2, op%buff_ri)
-      call opencl_set_kernel_arg(kernel_operate, 3, op%buff_map)
-      call opencl_set_kernel_arg(kernel_operate, 4, buff_weights)
-      call opencl_set_kernel_arg(kernel_operate, 5, fi%pack%buffer)
-      call opencl_set_kernel_arg(kernel_operate, 6, log2(eff_size))
-      call opencl_set_kernel_arg(kernel_operate, 7, fo%pack%buffer)
-      call opencl_set_kernel_arg(kernel_operate, 8, log2(eff_size))
-
+      call opencl_set_kernel_arg(kernel_operate, 0, op%mesh%np)
+      call opencl_set_kernel_arg(kernel_operate, 1, op%buff_ri)
+      call opencl_set_kernel_arg(kernel_operate, 2, op%buff_map)
+      call opencl_set_kernel_arg(kernel_operate, 3, buff_weights)
+      call opencl_set_kernel_arg(kernel_operate, 4, fi%pack%buffer)
+      call opencl_set_kernel_arg(kernel_operate, 5, log2(eff_size))
+      call opencl_set_kernel_arg(kernel_operate, 6, fo%pack%buffer)
+      call opencl_set_kernel_arg(kernel_operate, 7, log2(eff_size))
+      iarg = 7
+      
       call clGetDeviceInfo(opencl%device, CL_DEVICE_LOCAL_MEM_SIZE, local_mem_size, cl_status)
       isize = int(dble(local_mem_size)/(op%stencil%size*types_get_size(TYPE_INTEGER)))
       isize = isize - mod(isize, eff_size)
@@ -352,18 +358,37 @@ contains
       ASSERT(isize*op%stencil%size*types_get_size(TYPE_INTEGER) <= local_mem_size)
 
       if(opencl_use_shared_mem()) then
-        call opencl_set_kernel_arg(kernel_operate, 9, TYPE_INTEGER, isize*op%stencil%size)
+        iarg = iarg + 1
+        call opencl_set_kernel_arg(kernel_operate, iarg, TYPE_INTEGER, isize*op%stencil%size)
       end if
 
+      npoints = op%mesh%np
+      if(op%mesh%parallel_in_domains) then
+        iarg = iarg + 1
+        select case(points_)
+        case(OP_INNER)
+          npoints = op%ninner
+          call opencl_set_kernel_arg(kernel_operate, 0, op%ninner)
+          call opencl_set_kernel_arg(kernel_operate, iarg, op%buff_inner)
+        case(OP_OUTER)
+          npoints = op%nouter
+          call opencl_set_kernel_arg(kernel_operate, 0, op%nouter)
+          call opencl_set_kernel_arg(kernel_operate, iarg, op%buff_outer)
+        case(OP_ALL)
+          call opencl_set_kernel_arg(kernel_operate, iarg, op%buff_all)
+        case default
+          ASSERT(.false.)
+        end select
+      end if
+      
       call opencl_kernel_run(kernel_operate, (/eff_size, pad(op%mesh%np, bsize)/), (/eff_size, isize/))
 
-      call profiling_count_transfers(op%stencil%size*op%mesh%np + op%mesh%np, isize)
+      call profiling_count_transfers(npoints*(op%stencil%size + 2), isize)
+      call profiling_count_transfers(fi%nst_linear*npoints*(op%stencil%size + 1), R_TOTYPE(M_ONE))
 
-      do ist = 1, fi%nst_linear
-        call profiling_count_transfers(op%mesh%np_part*op%stencil%size + op%mesh%np, R_TOTYPE(M_ONE))
-      end do
+    case(OP_NOMAP)
+      ASSERT(points_ == OP_ALL)
 
-   case(OP_NOMAP)
       call opencl_set_kernel_arg(kernel_operate, 0, op%mesh%np)
       call opencl_set_kernel_arg(kernel_operate, 1, op%buff_stencil)
       call opencl_set_kernel_arg(kernel_operate, 2, op%buff_xyz_to_ip)
@@ -399,7 +424,20 @@ contains
         call profiling_count_transfers(op%mesh%np_part*op%stencil%size + op%mesh%np, R_TOTYPE(M_ONE))
       end do
     end select
-
+    
+    if(profile_) then
+      select case(points_)
+      case(OP_INNER)
+        call profiling_count_operations(fi%nst_linear*dble(op%ninner)*op%stencil%size*2*R_ADD)
+      case(OP_OUTER)
+        call profiling_count_operations(fi%nst_linear*dble(op%nouter)*op%stencil%size*2*R_ADD)
+      case(OP_ALL)
+        call profiling_count_operations(fi%nst_linear*dble(op%mesh%np)*op%stencil%size*2*R_ADD)
+      case default
+        ASSERT(.false.)
+      end select
+    end if
+    
     call opencl_finish()
 
     call opencl_release_buffer(buff_weights)

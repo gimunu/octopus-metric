@@ -1,5 +1,5 @@
 # -*- coding: utf-8 mode: shell-script -*-
-# $Id: 11-silicon_force.test 14626 2015-10-03 21:10:56Z xavier $
+# $Id: 11-silicon_force.test 15037 2016-01-11 17:59:46Z irina $
 
 Test       : Silicon force
 Program    : octopus
@@ -13,8 +13,8 @@ match ; Reduced k-points ; GREPFIELD(static/info, 'Number of symmetry-reduced k-
 match ; Space group        ; GREPFIELD(out, 'Space group', 4) ; 1
 match ; No. of symmetries  ; GREPFIELD(out, 'symmetries that can be used', 5)  ;  1
 
-match ; Total energy       ; GREPFIELD(static/info, 'Total       =', 3) ; -34.41786131
-match ; Ion-ion energy     ; GREPFIELD(static/info, 'Ion-ion     =', 3) ; -33.57875943
+match ; Total energy       ; GREPFIELD(static/info, 'Total       =', 3) ; -32.04954697
+match ; Ion-ion energy     ; GREPFIELD(static/info, 'Ion-ion     =', 3) ; -31.21044509
 match ; Eigenvalues sum    ; GREPFIELD(static/info, 'Eigenvalues =', 3) ;  -1.32807740
 match ; Hartree energy     ; GREPFIELD(static/info, 'Hartree     =', 3) ;   2.45353536
 match ; Exchange energy    ; GREPFIELD(static/info, 'Exchange    =', 3) ;  -8.17614687

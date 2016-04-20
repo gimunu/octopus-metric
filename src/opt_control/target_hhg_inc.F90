@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: target_hhg_inc.F90 14541 2015-09-06 15:13:42Z xavier $
+!! $Id: target_hhg_inc.F90 15216 2016-03-21 15:48:22Z acastro $
 
 
   ! ----------------------------------------------------------------------
@@ -225,7 +225,7 @@
     type(target_t),   intent(inout) :: tg
     type(oct_t), intent(in)       :: oct
     PUSH_SUB(target_init_hhgnew)
-    if((oct%algorithm  ==  oct_algorithm_cg) .or. (oct%algorithm == oct_algorithm_bfgs)) then
+    if((oct%algorithm  ==  OPTION__OCTSCHEME__OCT_CG) .or. (oct%algorithm == OPTION__OCTSCHEME__OCT_BFGS)) then
       SAFE_DEALLOCATE_P(tg%grad_local_pot)
       SAFE_DEALLOCATE_P(tg%rho)
       SAFE_DEALLOCATE_P(tg%vel)
@@ -296,18 +296,20 @@
     type(grid_t),      intent(inout) :: gr
     type(states_t),    intent(inout) :: chi_out
 
-    integer :: ik, idim, ist, ip
+    integer :: ik, idim, ist, ip, ib
     PUSH_SUB(target_chi_hhg)
 
     !we have a time-dependent target --> Chi(T)=0
-    forall(ip=1:gr%mesh%np, idim=1:chi_out%d%dim, ist=chi_out%st_start:chi_out%st_end, ik=1:chi_out%d%nik)
-      chi_out%zdontusepsi(ip, idim, ist, ik) = M_z0
-    end forall
-
+    do ik = chi_out%d%kpt%start, chi_out%d%kpt%end
+      do ib = chi_out%group%block_start, chi_out%group%block_end
+        call batch_set_zero(chi_out%group%psib(ib, ik))
+      end do
+    end do
+    
     POP_SUB(target_chi_hhg)
   end subroutine target_chi_hhg
 
-
+ 
   ! ---------------------------------------------------------
   !> 
   !!
@@ -318,7 +320,7 @@
     integer,             intent(in)    :: time
     integer,             intent(in)    :: max_time
 
-    CMPLX, allocatable :: opsi(:, :)
+    CMPLX, allocatable :: opsi(:, :), zpsi(:, :)
     integer :: iw, ia, ist, idim, ik
     FLOAT :: acc(MAX_DIM), dt, dw
 
@@ -330,6 +332,7 @@
     if(.not.target_move_ions(tg)) then
 
       SAFE_ALLOCATE(opsi(1:gr%mesh%np_part, 1:1))
+      SAFE_ALLOCATE(zpsi(1:gr%mesh%np_part, 1:1))
 
       opsi = M_z0
       ! WARNING This does not work for spinors.
@@ -337,17 +340,19 @@
       acc = M_ZERO
       do ik = 1, psi%d%nik
         do ist = 1, psi%nst
+          call states_get_state(psi, gr%mesh, ist, ik, zpsi)
           do idim = 1, gr%sb%dim
-            opsi(1:gr%mesh%np, 1) = tg%grad_local_pot(1, 1:gr%mesh%np, idim)*psi%zdontusepsi(1:gr%mesh%np, 1, ist, ik)
+            opsi(1:gr%mesh%np, 1) = tg%grad_local_pot(1, 1:gr%mesh%np, idim)*zpsi(1:gr%mesh%np, 1)
             acc(idim) = acc(idim) + real( psi%occ(ist, ik) * &
-                zmf_dotp(gr%mesh, psi%d%dim, opsi, psi%zdontusepsi(:, :, ist, ik)), REAL_PRECISION )
-            tg%acc(time+1, idim) = tg%acc(time+1, idim) + psi%occ(ist, ik) * &
-                zmf_dotp(gr%mesh, psi%d%dim, opsi, psi%zdontusepsi(:, :, ist, ik))
+                zmf_dotp(gr%mesh, psi%d%dim, opsi, zpsi), REAL_PRECISION )
+            tg%acc(time+1, idim) = tg%acc(time+1, idim) + psi%occ(ist, ik)*zmf_dotp(gr%mesh, psi%d%dim, opsi, zpsi)
           end do
         end do
       end do
 
       SAFE_DEALLOCATE_A(opsi)
+      SAFE_DEALLOCATE_A(zpsi)
+      
     end if
 
     dt = tg%dt

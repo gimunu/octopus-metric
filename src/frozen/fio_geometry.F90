@@ -1,15 +1,15 @@
 #include "global.h"
 
-module fio_geometry_m
+module fio_geometry_oct_m
 
-  use base_geometry_m
-  use geo_intrf_m
-  use geometry_m
-  use global_m
-  use json_m
-  use messages_m
-  use profiling_m
-  use space_m
+  use base_geometry_oct_m
+  use geo_intrf_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use json_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use space_oct_m
 
   implicit none
 
@@ -39,18 +39,19 @@ contains
     POP_SUB(fio_geometry__init__)
   end subroutine fio_geometry__init__
 
+  ! ---------------------------------------------------------
   subroutine geometry__init__(this, space, config)
     type(geometry_t),    intent(out) :: this
     type(space_t),       intent(in)  :: space
     type(json_object_t), intent(in)  :: config
 
     PUSH_SUB(geometry__init__)
-
+    
     call geometry_init_from_data_object(this, space, config)
 
     POP_SUB(geometry__init__)
 
   end subroutine geometry__init__
 
-end module fio_geometry_m
+end module fio_geometry_oct_m
 

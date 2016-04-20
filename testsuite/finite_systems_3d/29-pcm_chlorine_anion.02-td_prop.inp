@@ -13,8 +13,11 @@ ExperimentalFeatures = yes
 units = ev_angstrom
 ExcessCharge = -1
 
+ParDomains = 2
+ParStates = 2
+
 %Species
-  'Cl' | species_pseudo | db_file | "HGH/Cl.hgh"
+  'Cl' | species_pseudo | db_file | "HGH/Cl.hgh" 
 %
 
 BoxShape = minimum

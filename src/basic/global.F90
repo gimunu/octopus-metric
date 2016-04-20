@@ -15,15 +15,15 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: global.F90 14430 2015-07-13 12:09:54Z adelgado $
+!! $Id: global.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module global_m
-  use hardware_m
-  use loct_m
-  use mpi_m
-  use varinfo_m
+module global_oct_m
+  use hardware_oct_m
+  use loct_oct_m
+  use mpi_oct_m
+  use varinfo_oct_m
 #ifdef HAVE_OPENMP
   use omp_lib
 #endif
@@ -46,7 +46,6 @@ module global_m
   integer, public, parameter :: MAX_PATH_LEN=256
 
   type conf_t
-    integer :: debug_level   !< How much debug should print
     logical :: devel_version !< If true then allow unstable parts of the code
     logical :: report_memory
     character(len=256) :: share       !< Name of the share dir
@@ -107,8 +106,6 @@ module global_m
   real(8), public                    :: time_stack(50)
   integer, public                    :: no_sub_stack = 0
 
-  !> should we run in debug mode
-  logical, public :: in_debug_mode = .false.
   !> Same for profiling mode.
   logical, public :: in_profiling_mode = .false.
 
@@ -262,7 +259,7 @@ FCFLAGS
 #ifdef HAVE_OPENMP
     not_in_openmp = .not. omp_in_parallel()
 #else
-    not_in_openmp = .true.;
+    not_in_openmp = .true.
 #endif
 
   end function not_in_openmp
@@ -278,7 +275,7 @@ FCFLAGS
     
   end function cat
   
-end module global_m
+end module global_oct_m
 
 !! Local Variables:
 !! mode: f90

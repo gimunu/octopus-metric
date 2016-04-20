@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: target_classical_inc.F90 14541 2015-09-06 15:13:42Z xavier $
+!! $Id: target_classical_inc.F90 15216 2016-03-21 15:48:22Z acastro $
 
 
   ! ----------------------------------------------------------------------
@@ -81,9 +81,9 @@
         end do
       end do
       call parse_block_end(blk)
-    elseif(oct%algorithm  ==  oct_algorithm_cg .or. oct%algorithm == oct_algorithm_bfgs) then
-      message(1) = 'If "OCTTargetOperator = oct_tg_classical" and "OCTScheme = oct_algorithm_cg" or'
-      message(2) = '"OCTScheme = oct_algorithm_bfgs", then you must define the blocks "OCTClassicalTarget",' 
+    elseif(oct%algorithm  ==  OPTION__OCTSCHEME__OCT_CG .or. oct%algorithm == OPTION__OCTSCHEME__OCT_BFGS) then
+      message(1) = 'If "OCTTargetOperator = oct_classical" and "OCTScheme = oct_cg" or'
+      message(2) = '"OCTScheme = oct_bfgs", then you must define the blocks "OCTClassicalTarget",' 
       message(3) = '"OCTPositionDerivatives" AND "OCTMomentumDerivatives"'
       call messages_fatal(3)
     end if
@@ -106,9 +106,9 @@
         end do
       end do
       call parse_block_end(blk)
-    elseif(oct%algorithm  ==  oct_algorithm_cg .or. oct%algorithm == oct_algorithm_bfgs) then
-      message(1) = 'If "OCTTargetOperator = oct_tg_classical" and "OCTScheme = oct_algorithm_cg" or'
-      message(2) = '"OCTScheme = oct_algorithm_bfgs", then you must define the blocks "OCTClassicalTarget",'
+    elseif(oct%algorithm  ==  OPTION__OCTSCHEME__OCT_CG .or. oct%algorithm == OPTION__OCTSCHEME__OCT_BFGS) then
+      message(1) = 'If "OCTTargetOperator = oct_tg_classical" and "OCTScheme = oct_cg" or'
+      message(2) = '"OCTScheme = oct_bfgs", then you must define the blocks "OCTClassicalTarget",'
       message(3) = '"OCTPositionDerivatives" AND "OCTMomentumDerivatives"'
       call messages_fatal(3)
     end if
@@ -172,7 +172,7 @@
     type(opt_control_state_t), intent(inout) :: qcchi
     type(geometry_t), intent(in)    :: geo
 
-    integer :: ist, jst, ik
+    integer :: ist, jst, ik, ib, iqn
     character(len=1024) :: temp_string
     FLOAT :: df_dv, dummy(3)
     FLOAT, pointer :: q(:, :), p(:, :), tq(:, :), tp(:, :)
@@ -209,10 +209,13 @@
     end do
 
     chi => opt_control_point_qs(qcchi)
+
     !We assume that there is no time-independent operator.
-    forall(ik = 1:chi%d%nik, ist = chi%st_start:chi%st_end)
-      chi%zdontusepsi(:, :, ist, ik) = M_z0
-    end forall
+    do iqn = chi%d%kpt%start, chi%d%kpt%end
+      do ib = chi%group%block_start, chi%group%block_end
+        call batch_set_zero(chi%group%psib(ib, iqn))
+      end do
+    end do
 
     nullify(tq)
     nullify(tp)

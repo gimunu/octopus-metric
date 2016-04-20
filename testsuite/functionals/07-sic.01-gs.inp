@@ -1,5 +1,5 @@
 # -*- coding: utf-8 mode: shell-script -*-
-# $Id: 07-sic.01-gs.inp 14678 2015-10-19 06:40:46Z xavier $
+# $Id: 07-sic.01-gs.inp 14796 2015-11-19 16:38:12Z xavier $
 
 CalculationMode = gs
 
@@ -24,7 +24,5 @@ EigenSolver = cg_new
 Mixing = 0.1
 ConvRelDens = 1e-5
 
-
 FilterPotentials = filter_none
 
-MixField = density

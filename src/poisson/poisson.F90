@@ -16,47 +16,47 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: poisson.F90 14420 2015-07-02 15:43:09Z ravindra $
+!! $Id: poisson.F90 15275 2016-04-15 01:48:33Z xavier $
 
 #include "global.h"
 
-module poisson_m
-  use batch_m
-  use boundaries_m
-  use cube_m
-  use derivatives_m
-  use fft_m
-  use global_m
-  use index_m
-  use io_m
-  use io_function_m
-  use loct_math_m
-  use math_m
-  use mesh_m
-  use mesh_cube_parallel_map_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use multicomm_m
-  use opencl_m
-  use par_vec_m
-  use parser_m
-  use partition_m
-  use poisson_cg_m
-  use poisson_corrections_m
-  use poisson_isf_m
-  use poisson_fft_m
-  use poisson_fmm_m
-  use poisson_libisf_m
-  use poisson_multigrid_m
-  use poisson_no_m
-  use profiling_m
-  use simul_box_m
-  use test_parameters_m
-  use types_m
-  use unit_m
-  use unit_system_m
-  use varinfo_m
+module poisson_oct_m
+  use batch_oct_m
+  use boundaries_oct_m
+  use cube_oct_m
+  use derivatives_oct_m
+  use fft_oct_m
+  use global_oct_m
+  use index_oct_m
+  use io_oct_m
+  use io_function_oct_m
+  use loct_math_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_cube_parallel_map_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use multicomm_oct_m
+  use opencl_oct_m
+  use par_vec_oct_m
+  use parser_oct_m
+  use partition_oct_m
+  use poisson_cg_oct_m
+  use poisson_corrections_oct_m
+  use poisson_isf_oct_m
+  use poisson_fft_oct_m
+  use poisson_fmm_oct_m
+  use poisson_libisf_oct_m
+  use poisson_multigrid_oct_m
+  use poisson_no_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
+  use test_parameters_oct_m
+  use types_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -93,7 +93,6 @@ module poisson_m
     POISSON_CG_CORRECTED  =  6,         &
     POISSON_MULTIGRID     =  7,         &
     POISSON_ISF           =  8,         &
-    POISSON_SETE          =  9,         &
     POISSON_LIBISF        = 10,         &
     POISSON_NO            = -99,        &
     POISSON_NULL          = -999
@@ -211,8 +210,6 @@ contains
     !% Multigrid method (only for finite systems).
     !%Option isf 8
     !% Interpolating Scaling Functions Poisson solver (only for finite systems).
-    !%Option sete 9
-    !% (Obsolete) SETE solver.
     !%Option libisf 10
     !% Meant to be exactly the same as Interpolating
     !% Scaling Functions (isf) Poisson solver, but using an external
@@ -229,7 +226,7 @@ contains
     
     if(der%mesh%sb%dim > 3) default_solver = POISSON_CG_CORRECTED
 
-#ifdef HAVE_CLAMDFFT
+#ifdef HAVE_CLFFT
     ! this is disabled, since the difference between solvers are big
     ! enough to cause problems with the tests.
     ! if(opencl_is_enabled()) default_solver = POISSON_FFT
@@ -266,14 +263,12 @@ contains
       str = "multigrid"
     case (POISSON_ISF)
       str = "interpolating scaling functions"
-    case (POISSON_SETE)
-      str = "SETE"
     case (POISSON_LIBISF)
       str = "interpolating scaling functions (from BigDFT)"
     case (POISSON_NO)
       str = "no Poisson solver - Hartree set to 0"
     end select
-    write(message(1),'(a,a,a)') "The chosen Poisson solver is '",trim(str),"'"
+    write(message(1),'(a,a,a)') "The chosen Poisson solver is '", trim(str), "'"
     call messages_info(1)
 
     if(this%method /= POISSON_FFT) then
@@ -431,11 +426,6 @@ contains
         message(3) = 'negligible error. You may want to check that the "fft" or "cg"'
         message(4) = 'solver are providing, in your case, the same results.'
         call messages_warning(4)
-      end if
-
-      if (this%method == POISSON_SETE) then
-        message(1) = 'SETE poisson solver is obsolete and has been removed.'
-        call messages_fatal(1)
       end if
 
       if (this%method == POISSON_FMM) then
@@ -968,10 +958,10 @@ contains
     
     call dio_function_output (io_function_fill_how('AxisX'), ".", "poisson_test_rho", mesh, rho, unit_one, ierr)
     call dio_function_output (io_function_fill_how('AxisX'), ".", "poisson_test_exact", mesh, vh_exact, unit_one, ierr)
-    call dio_function_output (io_function_fill_how('AxisX'), ".", "poisson_test_numerical", mesh, vh, unit_one, ierr)
+    call dio_function_output (io_function_fill_how('AxisX'), ".", "poisson_tedist%numerical", mesh, vh, unit_one, ierr)
     call dio_function_output (io_function_fill_how('AxisY'), ".", "poisson_test_rho", mesh, rho, unit_one, ierr)
     call dio_function_output (io_function_fill_how('AxisY'), ".", "poisson_test_exact", mesh, vh_exact, unit_one, ierr)
-    call dio_function_output (io_function_fill_how('AxisY'), ".", "poisson_test_numerical", mesh, vh, unit_one, ierr)
+    call dio_function_output (io_function_fill_how('AxisY'), ".", "poisson_tedist%numerical", mesh, vh, unit_one, ierr)
     ! not dimensionless, but no need for unit conversion for a test routine
 
     SAFE_DEALLOCATE_A(rho)
@@ -1155,7 +1145,7 @@ contains
 #include "poisson_inc.F90"
 #include "solver_1d_solve_inc.F90"
 
-end module poisson_m
+end module poisson_oct_m
 
 !! Local Variables:
 !! mode: f90

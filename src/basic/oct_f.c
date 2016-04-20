@@ -16,7 +16,7 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
  02110-1301, USA.
 
- $Id: oct_f.c 13753 2015-04-06 21:09:37Z dstrubbe $
+ $Id: oct_f.c 14801 2015-11-20 18:24:26Z jrfsousa $
 */
 
 #include <config.h>
@@ -140,27 +140,28 @@ void FC_FUNC_(oct_getcwd, OCT_GETCWD)
   TO_F_STR1(s, name);
 }
 
-void FC_FUNC_(oct_realpath, OCT_GETCWD)
+void FC_FUNC_(oct_realpath, OCT_REALPATH)
      (STR_F_TYPE fnam, STR_F_TYPE rnam STR_ARG2)
 {
   char *fn=NULL, *rn=NULL;
   TO_C_STR1(fnam, fn);
-  rn=realpath(fn, NULL);
+  rn = realpath(fn, NULL);
+  free(fn);
   if(rn!=NULL){
     TO_F_STR2(rn, rnam);
   }else{
     TO_F_STR2("", rnam);
   }
-  free(fn);
+  free(rn);
   return;
 }
 
-void FC_FUNC_(oct_dirname, OCT_GETCWD)
+void FC_FUNC_(oct_dirname, OCT_DIRNAME)
      (STR_F_TYPE fnam, STR_F_TYPE dnam STR_ARG2)
 {
   char *fn=NULL, *dn=NULL;
   TO_C_STR1(fnam, fn);
-  dn=dirname(fn);
+  dn = dirname(fn);
   if(dn!=NULL){
     TO_F_STR2(dn, dnam);
   }else{
@@ -170,18 +171,18 @@ void FC_FUNC_(oct_dirname, OCT_GETCWD)
   return;
 }
 
-void FC_FUNC_(oct_basename, OCT_GETCWD)
+void FC_FUNC_(oct_basename, OCT_BASENAME)
      (STR_F_TYPE fnam, STR_F_TYPE bnam STR_ARG2)
 {
   char *fn=NULL, *bn=NULL;
   TO_C_STR1(fnam, fn);
-  bn=basename(fn);
+  bn = basename(fn);
+  free(fn);
   if(bn!=NULL){
     TO_F_STR2(bn, bnam);
   }else{
     TO_F_STR2("", bnam);
   }
-  free(fn);
   return;
 }
 

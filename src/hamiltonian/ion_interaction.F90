@@ -15,25 +15,27 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: ion_interaction.F90 14178 2015-06-02 00:09:49Z dstrubbe $
+!! $Id: ion_interaction.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module ion_interaction_m
-  use comm_m
-  use geometry_m
-  use global_m
-  use distributed_m
-  use loct_math_m
-  use messages_m
-  use mpi_m
-  use parser_m
-  use periodic_copy_m
-  use profiling_m
-  use simul_box_m
-  use species_m
-  use ssys_ionic_m
-  use unit_system_m
+module ion_interaction_oct_m
+  use base_term_oct_m
+  use comm_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use distributed_oct_m
+  use loct_math_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use parser_oct_m
+  use periodic_copy_oct_m
+  use profiling_oct_m
+  use ps_oct_m
+  use simul_box_oct_m
+  use species_oct_m
+  use ssys_ionic_oct_m
+  use unit_system_oct_m
 
   implicit none
 
@@ -47,8 +49,8 @@ module ion_interaction_m
     ion_interaction_test
 
   type ion_interaction_t
-    type(ssys_ionic_t), pointer :: subsys_ionic !< Subsystems ionic term.
-    FLOAT                       :: alpha
+    type(base_term_t), pointer :: subsys_ionic !< Subsystems ionic term.
+    FLOAT                      :: alpha
   end type ion_interaction_t
 
   integer, parameter ::            &
@@ -66,7 +68,7 @@ contains
 
     !%Variable EwaldAlpha
     !%Type float
-    !%Default 1.1313708
+    !%Default 0.21
     !%Section Hamiltonian
     !%Description
     !% The value 'Alpha' that controls the splitting of the Coulomb
@@ -98,8 +100,8 @@ contains
   ! ---------------------------------------------------------
   
   subroutine ion_interaction_add_subsys_ionic(this, subsys_ionic)
-    type(ion_interaction_t),    intent(inout) :: this
-    type(ssys_ionic_t), target, intent(in)    :: subsys_ionic
+    type(ion_interaction_t),   intent(inout) :: this
+    type(base_term_t), target, intent(in)    :: subsys_ionic
     
     PUSH_SUB(ion_interaction_add_subsys_ionic)
     
@@ -293,7 +295,7 @@ contains
     FLOAT, optional,           intent(out)   :: energy_components(:)
     FLOAT, optional,           intent(out)   :: force_components(:, :, :)
 
-    FLOAT :: rr, xi(1:MAX_DIM), zi, zj, ereal, efourier, eself, erfc, rcut
+    FLOAT :: rr, xi(1:MAX_DIM), zi, zj, ereal, efourier, eself, erfc, rcut, epseudo
     integer :: iatom, jatom, icopy
     type(periodic_copy_t) :: pc
     integer :: ix, iy, iz, isph, ss, idim
@@ -302,6 +304,7 @@ contains
     CMPLX   :: sumatoms, tmp(1:MAX_DIM), aa
     CMPLX, allocatable :: phase(:)
     type(profile_t), save :: prof_short, prof_long
+    type(ps_t) :: spec_ps
 
     PUSH_SUB(ion_interaction_periodic)
 
@@ -448,6 +451,20 @@ contains
     end if
 
     energy = ereal + efourier + eself
+	
+    ! Previously unaccounted G = 0 term from pseudopotentials. 
+    ! See J. Ihm, A. Zunger, M.L. Cohen, J. Phys. C 12, 4409 (1979)
+    epseudo = M_ZERO
+    do iatom = 1, geo%natoms
+      if(species_is_ps(geo%atom(iatom)%species)) then
+        zi = species_zval(geo%atom(iatom)%species)
+        spec_ps = species_ps(geo%atom(iatom)%species)
+        epseudo = epseudo + M_PI*zi*&
+          (spec_ps%sigma_erf*sqrt(M_TWO))**2/sb%rcell_volume*charge
+      end if
+    end do
+
+    energy = energy + epseudo
     
     call profiling_out(prof_long)
     
@@ -530,7 +547,7 @@ contains
     POP_SUB(ion_interaction_test)
   end subroutine ion_interaction_test
     
-end module ion_interaction_m
+end module ion_interaction_oct_m
 
 !! Local Variables:
 !! mode: f90

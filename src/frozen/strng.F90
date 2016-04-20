@@ -1,11 +1,11 @@
 #include "global.h"
 
-module strng_m
+module strng_oct_m
 
-  use global_m
-  use kinds_m
-  use messages_m
-  use profiling_m
+  use global_oct_m
+  use kinds_oct_m
+  use messages_oct_m
+  use profiling_oct_m
 
 
   implicit none
@@ -190,7 +190,7 @@ contains
     real(kind=wp) :: tmp
     integer       :: pwr
 
-    PUSH_SUB(strng_init_size)
+    PUSH_SUB(strng_allocate)
 
     call strng_nullify(this)
     this%size = STRNG_INIT_LEN
@@ -204,7 +204,7 @@ contains
     end if
     SAFE_ALLOCATE(this%value(this%size))
 
-    POP_SUB(strng_init_size)
+    POP_SUB(strng_allocate)
   end subroutine strng_allocate
 
   ! ---------------------------------------------------------
@@ -513,7 +513,7 @@ contains
     POP_SUB(strng_end)
   end subroutine strng_end
 
-end module strng_m
+end module strng_oct_m
 
 !! Local Variables:
 !! mode: f90

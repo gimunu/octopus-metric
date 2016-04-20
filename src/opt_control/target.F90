@@ -15,49 +15,51 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: target.F90 14541 2015-09-06 15:13:42Z xavier $
+!! $Id: target.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module target_m
-  use density_m
-  use derivatives_m
-  use epot_m
-  use excited_states_m
-  use fft_m
-  use forces_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hamiltonian_m
-  use io_m
-  use io_function_m
-  use ion_dynamics_m
-  use lalg_adv_m
-  use lalg_basic_m
-  use loct_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use opt_control_global_m
-  use opt_control_state_m
-  use output_m
-  use parser_m
-  use profiling_m
-  use restart_m
-  use species_m
-  use spectrum_m
-  use states_m
-  use states_calc_m
-  use states_dim_m
-  use states_restart_m
-  use string_m
-  use td_calc_m
-  use td_m
-  use types_m
-  use unit_m
-  use unit_system_m
-  use varinfo_m
+module target_oct_m
+  use batch_oct_m
+  use batch_ops_oct_m
+  use density_oct_m
+  use derivatives_oct_m
+  use epot_oct_m
+  use excited_states_oct_m
+  use fft_oct_m
+  use forces_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hamiltonian_oct_m
+  use io_oct_m
+  use io_function_oct_m
+  use ion_dynamics_oct_m
+  use lalg_adv_oct_m
+  use lalg_basic_oct_m
+  use loct_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use opt_control_global_oct_m
+  use opt_control_state_oct_m
+  use output_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use restart_oct_m
+  use species_oct_m
+  use spectrum_oct_m
+  use states_oct_m
+  use states_calc_oct_m
+  use states_dim_oct_m
+  use states_restart_oct_m
+  use string_oct_m
+  use td_calc_oct_m
+  use td_oct_m
+  use types_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -451,36 +453,68 @@ contains
     type(states_t),    intent(inout)     :: inh
     integer,           intent(in)        :: iter
  
-    integer :: ik, ist, ip, idim
+    integer :: ik, ist, ip, idim, ib
+    CMPLX, allocatable :: zpsi(:)
     CMPLX :: gvec(MAX_DIM)
 
     PUSH_SUB(target_inh)
 
+    SAFE_ALLOCATE(zpsi(1:gr%mesh%np))
+    
     select case(tg%type)
     case(oct_tg_td_local)
-      call target_build_tdlocal(tg, gr, time)
-      forall(ik = 1:inh%d%nik, ist = inh%st_start:inh%st_end, idim = 1:inh%d%dim, ip = 1:gr%mesh%np)
-        inh%zdontusepsi(ip, idim, ist, ik) = -psi%occ(ist, ik)*tg%rho(ip)*psi%zdontusepsi(ip, idim, ist, ik)
-      end forall
 
+      call target_build_tdlocal(tg, gr, time)
+
+      do ik = inh%d%kpt%start, inh%d%kpt%end
+        do ist = inh%st_start, inh%st_end
+          do idim = 1, inh%d%dim
+            call states_get_state(psi, gr%mesh, idim, ist, ik, zpsi)
+            zpsi(1:gr%mesh%np) = -psi%occ(ist, ik)*tg%rho(1:gr%mesh%np)*zpsi(1:gr%mesh%np)
+            call states_set_state(inh, gr%mesh, idim, ist, ik, zpsi)
+          end do
+        end do
+      end do
+      
     case(oct_tg_hhgnew)
-      gvec(1:gr%sb%dim) = real(tg%gvec(iter+1, 1:gr%sb%dim), REAL_PRECISION)
-      forall(ik = 1:inh%d%nik, ist = inh%st_start:inh%st_end, idim = 1:inh%d%dim, ip = 1:gr%mesh%np)
-        inh%zdontusepsi(ip, idim, ist, ik) = &
-           - psi%occ(ist, ik)*M_TWO*sum(tg%grad_local_pot(1, ip, 1:gr%sb%dim)*gvec(1:gr%sb%dim))* &
-           psi%zdontusepsi(ip, idim, ist, ik)
-      end forall
+      gvec(1:gr%sb%dim) = real(tg%gvec(iter + 1, 1:gr%sb%dim), REAL_PRECISION)
+
+      do ik = inh%d%kpt%start, inh%d%kpt%end
+        do ist = inh%st_start, inh%st_end
+          do idim = 1, inh%d%dim
+            call states_get_state(psi, gr%mesh, idim, ist, ik, zpsi)
+            forall(ip = 1:gr%mesh%np)
+              zpsi(ip) = -psi%occ(ist, ik)*M_TWO*sum(tg%grad_local_pot(1, ip, 1:gr%sb%dim)*gvec(1:gr%sb%dim))*zpsi(ip)
+            end forall
+            call states_set_state(inh, gr%mesh, idim, ist, ik, zpsi)
+          end do
+        end do
+      end do
 
     case(oct_tg_velocity)
-      forall(ik = 1:inh%d%nik, ist = inh%st_start:inh%st_end, idim = 1:inh%d%dim, ip = 1:gr%mesh%np)
-         inh%zdontusepsi(ip, idim, ist, ik) = -psi%occ(ist, ik)*tg%rho(ip)*psi%zdontusepsi(ip, idim, ist, ik)
-      end forall
+
+      do ik = inh%d%kpt%start, inh%d%kpt%end
+        do ist = inh%st_start, inh%st_end
+          do idim = 1, inh%d%dim
+            call states_get_state(psi, gr%mesh, idim, ist, ik, zpsi)
+            forall(ip = 1:gr%mesh%np)
+              zpsi(ip) = -psi%occ(ist, ik)*tg%rho(ip)*zpsi(ip)
+            end forall
+            call states_set_state(inh, gr%mesh, idim, ist, ik, zpsi)
+          end do
+        end do
+      end do
    
     case(oct_tg_jdensity)
+
+      do ik = inh%d%kpt%start, inh%d%kpt%end
+        do ib = inh%group%block_start, inh%group%block_end
+          call batch_set_zero(inh%group%psib(ib, ik))
+        end do
+      end do
+        
       if (abs(nint(time/tg%dt)) >= tg%strt_iter_curr_tg) then
-        inh%zdontusepsi =  -chi_current(tg, gr, psi)
-      else
-        inh%zdontusepsi = M_ZERO
+        call chi_current(tg, gr, CNST(-1.0), psi, inh)
       end if     
 
     case default
@@ -489,6 +523,8 @@ contains
   
     end select
 
+    SAFE_DEALLOCATE_A(zpsi)
+    
     POP_SUB(target_inh)
   end subroutine target_inh
   !----------------------------------------------------------
@@ -570,12 +606,6 @@ contains
       call target_chi_excited(tg, gr, psi_in, chi_out)
     case(oct_tg_gstransformation)
       call target_chi_gstransformation(tg, gr, psi_in, chi_out)
-      q => opt_control_point_q(qcchi_out)
-      p => opt_control_point_p(qcchi_out)
-      q = M_ZERO
-      p = M_ZERO
-      nullify(q)
-      nullify(p)
     case(oct_tg_userdefined)
       call target_chi_userdefined(tg, gr, psi_in, chi_out)
     case(oct_tg_jdensity)
@@ -595,8 +625,18 @@ contains
     case(oct_tg_classical)
       call target_chi_classical(tg, qcpsi_in, qcchi_out, geo)
     case(oct_tg_spin)
-      call target_chi_spin(tg, psi_in, chi_out)
+      call target_chi_spin(tg, gr, psi_in, chi_out)
     end select
+
+    ! Unless the target is "classical", the co-state classical variables are zero at time t=T.
+    if(tg%type .ne. oct_tg_classical ) then
+      q => opt_control_point_q(qcchi_out)
+      p => opt_control_point_p(qcchi_out)
+      q = M_ZERO
+      p = M_ZERO
+      nullify(q)
+      nullify(p)
+    end if
 
     nullify(psi_in)
     nullify(chi_out)
@@ -669,7 +709,7 @@ contains
 #include "target_classical_inc.F90"
 #include "target_spin_inc.F90"
 
-end module target_m
+end module target_oct_m
 
 !! Local Variables:
 !! mode: f90

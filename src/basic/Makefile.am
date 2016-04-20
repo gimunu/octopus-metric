@@ -17,7 +17,7 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: Makefile.am 14034 2015-05-19 15:31:40Z dstrubbe $
+## $Id: Makefile.am 15219 2016-03-21 21:21:28Z xavier $
 
 noinst_LIBRARIES = libbasic.a
 
@@ -57,7 +57,7 @@ libbasic_a_SOURCES =     \
 	oct_f.c          \
 	oct_gdlib_f.c    \
 	write_iter.F90   \
-	write_iter_low.c \
+	write_iter_low.cc \
 	varinfo_low.c    \
 	signals.c        \
 	io_binary_f.F90  \
@@ -74,11 +74,10 @@ libbasic_a_SOURCES =     \
 	polyhedron.F90       \
 	xml.F90              \
 	xml_low.c            \
-	test_parameters.F90
-
-if COMPILE_PAPI
-libbasic_a_SOURCES += papi.c papi_f.F90
-endif
+	test_parameters.F90  \
+	sort.F90             \
+	sort_low.cc          \
+	debug.F90
 
 noinst_HEADERS =               \
 	mpi_debug_inc.F90      \
@@ -88,7 +87,8 @@ noinst_HEADERS =               \
 	io_binary.h            \
 	comm_inc.F90           \
 	opencl_inc.F90         \
-        io_binary_f_inc.F90
+        io_binary_f_inc.F90    \
+	sort_inc.F90
 
 include $(srcdir)/../common-rules.make
 
@@ -114,11 +114,12 @@ string.o : string.F90 loct.o
 loct.o : loct.F90
 loct_pointer.o : loct_pointer.F90 loct_pointer_inc.F90 global.o messages.o profiling.o
 global.o : global.F90 mpi.o loct.o hardware.o varinfo.o Makefile
+debug.o : debug.F90 global.o parser.o
 unit.o : unit.F90 global.o
 parser.o : parser.F90 mpi.o loct.o global.o unit.o varinfo.F90
-messages.o : messages.F90 varinfo.o string.o mpi.o parser.o loct.o global.o  unit.o
-papi_f.o : papi_f.F90
-profiling.o : profiling.F90 mpi.o messages.o loct.o io.o global.o papi_f.o types.o
+messages.o : messages.F90 varinfo.o string.o mpi.o parser.o loct.o global.o unit.o debug.o
+sort.o : sort.F90 sort_inc.F90 messages.o global.o
+profiling.o : profiling.F90 mpi.o messages.o loct.o io.o global.o types.o sort.o
 
 command_line.o : command_line.F90 messages.o profiling.o
 io.o : io.F90 mpi.o messages.o parser.o loct.o global.o  

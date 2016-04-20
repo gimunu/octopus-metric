@@ -15,29 +15,29 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: batch_ops.F90 14714 2015-10-30 03:56:51Z xavier $
+!! $Id: batch_ops.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module batch_ops_m
-  use batch_m
-  use blas_m
+module batch_ops_oct_m
+  use batch_oct_m
+  use blas_oct_m
   use iso_c_binding
 #ifdef HAVE_OPENCL
   use cl
 #endif
-  use octcl_kernel_m
-  use global_m
-  use hardware_m
-  use lalg_adv_m
-  use lalg_basic_m
-  use parser_m
-  use math_m
-  use messages_m
-  use opencl_m
-  use profiling_m
-  use types_m
-  use varinfo_m
+  use octcl_kernel_oct_m
+  use global_oct_m
+  use hardware_oct_m
+  use lalg_adv_oct_m
+  use lalg_basic_oct_m
+  use parser_oct_m
+  use math_oct_m
+  use messages_oct_m
+  use opencl_oct_m
+  use profiling_oct_m
+  use types_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -48,7 +48,6 @@ module batch_ops_m
     batch_axpy,                     &
     batch_scal,                     &
     batch_xpay,                     &
-    batch_copy_data,                &
     batch_set_state,                &
     batch_get_state,                &
     batch_get_points,               &
@@ -154,66 +153,6 @@ contains
 
     POP_SUB(batch_set_zero)
   end subroutine batch_set_zero
-
-! --------------------------------------------------------------
-
-subroutine batch_copy_data(np, xx, yy)
-  integer,           intent(in)    :: np
-  type(batch_t),     intent(in)    :: xx
-  type(batch_t),     intent(inout) :: yy
-
-  integer :: ist
-  type(profile_t), save :: prof
-#ifdef HAVE_OPENCL
-  integer :: localsize
-#endif
-
-  PUSH_SUB(batch_copy_data)
-  call profiling_in(prof, "BATCH_COPY_DATA")
-
-  ASSERT(batch_type(yy) == batch_type(xx))
-  ASSERT(xx%nst_linear == yy%nst_linear)
-  ASSERT(batch_status(xx) == batch_status(yy))
-
-  select case(batch_status(xx))
-  case(BATCH_CL_PACKED)
-
-#ifdef HAVE_OPENCL
-    call opencl_set_kernel_arg(kernel_copy, 0, xx%pack%buffer)
-    call opencl_set_kernel_arg(kernel_copy, 1, log2(xx%pack%size_real(1)))
-    call opencl_set_kernel_arg(kernel_copy, 2, yy%pack%buffer)
-    call opencl_set_kernel_arg(kernel_copy, 3, log2(yy%pack%size_real(1)))
-    
-    localsize = opencl_max_workgroup_size()/yy%pack%size_real(1)
-    call opencl_kernel_run(kernel_copy, (/yy%pack%size_real(1), pad(np, localsize)/), (/yy%pack%size_real(1), localsize/))
-    
-    call opencl_finish()
-#endif
-
-  case(BATCH_PACKED)
-    if(batch_type(yy) == TYPE_FLOAT) then
-      call blas_copy(np*xx%pack%size(1), xx%pack%dpsi(1, 1), 1, yy%pack%dpsi(1, 1), 1)
-    else
-      call blas_copy(np*xx%pack%size(1), xx%pack%zpsi(1, 1), 1, yy%pack%zpsi(1, 1), 1)
-    end if
-
-  case(BATCH_NOT_PACKED)
-    !$omp parallel do private(ist)
-    do ist = 1, yy%nst_linear
-      if(batch_type(yy) == TYPE_CMPLX) then
-        call blas_copy(np, xx%states_linear(ist)%zpsi(1), 1, yy%states_linear(ist)%zpsi(1), 1)
-      else
-        call blas_copy(np, xx%states_linear(ist)%dpsi(1), 1, yy%states_linear(ist)%dpsi(1), 1)
-      end if
-    end do
-
-  end select
-
-  call batch_pack_was_modified(yy)
-
-  call profiling_out(prof)
-  POP_SUB(batch_copy_data)
-end subroutine batch_copy_data
 
 ! --------------------------------------------------------------
 
@@ -338,7 +277,7 @@ end function batch_points_block_size
 #include "undef.F90"
 
 
-end module batch_ops_m
+end module batch_ops_oct_m
 
 !! Local Variables:
 !! mode: f90

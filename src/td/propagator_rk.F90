@@ -15,31 +15,32 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: propagator_rk.F90 14541 2015-09-06 15:13:42Z xavier $
+!! $Id: propagator_rk.F90 15262 2016-04-08 21:13:28Z xavier $
 
 #include "global.h"
 
-module propagator_rk_m
-  use batch_ops_m
-  use comm_m
-  use density_m
-  use forces_m
-  use grid_m
-  use geometry_m
-  use global_m
-  use hamiltonian_m
-  use ion_dynamics_m
-  use mesh_function_m
-  use messages_m
-  use opt_control_state_m
-  use potential_interpolation_m
-  use profiling_m
-  use propagator_base_m
-  use species_m
-  use sparskit_m
-  use states_m
-  use v_ks_m
-  use xc_m
+module propagator_rk_oct_m
+  use batch_ops_oct_m
+  use comm_oct_m
+  use density_oct_m
+  use forces_oct_m
+  use grid_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use hamiltonian_oct_m
+  use ion_dynamics_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use oct_exchange_oct_m
+  use opt_control_state_oct_m
+  use potential_interpolation_oct_m
+  use profiling_oct_m
+  use propagator_base_oct_m
+  use species_oct_m
+  use sparskit_oct_m
+  use states_oct_m
+  use v_ks_oct_m
+  use xc_oct_m
 
   implicit none
 
@@ -76,7 +77,7 @@ contains
     type(states_t), pointer :: chi
     FLOAT, pointer :: q(:, :), p(:, :)
 
-    integer :: np_part, np, kp1, kp2, st1, st2, nspin, ik, ist, iatom
+    integer :: np_part, np, kp1, kp2, st1, st2, nspin, ik, ist, iatom, ib
     CMPLX, allocatable :: zphi(:, :, :, :), zchi(:, :, :, :), dvpsi(:, :, :)
     type(states_t) :: hst, stphi, inh, hchi, stchi
     logical :: propagate_chi
@@ -188,12 +189,21 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Stage 2.
-
-    !
-    stphi%zdontusepsi = zphi - M_HALF * M_zI * dt * hst%zdontusepsi
+    
+    call states_set_state(stphi, gr%mesh, zphi)
     if(propagate_chi) then
-      stchi%zdontusepsi = zchi - M_HALF * M_zI * dt * hchi%zdontusepsi
+      call states_set_state(stchi, gr%mesh, zchi)    
     end if
+    
+    do ik = stphi%d%kpt%start, stphi%d%kpt%end
+      do ib = stphi%group%block_start, stphi%group%block_end
+        call batch_axpy(gr%mesh%np, -CNST(0.5)*M_zI*dt, hst%group%psib(ib, ik), stphi%group%psib(ib, ik))
+        if(propagate_chi) then
+          call batch_axpy(gr%mesh%np, -CNST(0.5)*M_zI*dt, hchi%group%psib(ib, ik), stchi%group%psib(ib, ik))
+        end if
+      end do
+    end do
+        
     if(ion_dynamics_ions_move(ions)) then
       pos = pos0 + M_HALF * posk
       vel = vel0 + M_HALF * velk
@@ -211,11 +221,20 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Stage 3.
 
-    !
-    stphi%zdontusepsi = zphi - M_HALF * M_zI * dt * hst%zdontusepsi
+    call states_set_state(stphi, gr%mesh, zphi)
     if(propagate_chi) then
-      stchi%zdontusepsi = zchi - M_HALF * M_zI * dt * hchi%zdontusepsi
+      call states_set_state(stchi, gr%mesh, zchi)    
     end if
+    
+    do ik = stphi%d%kpt%start, stphi%d%kpt%end
+      do ib = stphi%group%block_start, stphi%group%block_end
+        call batch_axpy(gr%mesh%np, -CNST(0.5)*M_zI*dt, hst%group%psib(ib, ik), stphi%group%psib(ib, ik))
+        if(propagate_chi) then
+          call batch_axpy(gr%mesh%np, -CNST(0.5)*M_zI*dt, hchi%group%psib(ib, ik), stchi%group%psib(ib, ik))
+        end if
+      end do
+    end do
+
     if(ion_dynamics_ions_move(ions)) then
       pos = pos0 + M_HALF * posk
       vel = vel0 + M_HALF * velk
@@ -234,11 +253,20 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Stage 4.
 
-    !
-    stphi%zdontusepsi = zphi - M_zI *dt * hst%zdontusepsi
+    call states_set_state(stphi, gr%mesh, zphi)
     if(propagate_chi) then
-      stchi%zdontusepsi = zchi - M_zI *dt * hchi%zdontusepsi
+      call states_set_state(stchi, gr%mesh, zchi)    
     end if
+    
+    do ik = stphi%d%kpt%start, stphi%d%kpt%end
+      do ib = stphi%group%block_start, stphi%group%block_end
+        call batch_axpy(gr%mesh%np, -M_zI*dt, hst%group%psib(ib, ik), stphi%group%psib(ib, ik))
+        if(propagate_chi) then
+          call batch_axpy(gr%mesh%np, -M_zI*dt, hchi%group%psib(ib, ik), stchi%group%psib(ib, ik))
+        end if
+      end do
+    end do
+
     if(ion_dynamics_ions_move(ions)) then
       pos = pos0 + posk
       vel = vel0 + velk
@@ -323,7 +351,7 @@ contains
         end do
         call hamiltonian_epot_generate(hm, gr, geo, stphi, time = tau)
       end if
-      if(.not.hamiltonian_oct_exchange(hm)) then
+      if(.not.oct_exchange_enabled(hm%oct_exchange)) then
         call density_calc(stphi, gr, stphi%rho)
         call v_ks_calc(ks, hm, stphi, geo)
       end if
@@ -351,15 +379,16 @@ contains
     subroutine f_chi(tau)
       FLOAT, intent(in) :: tau
 
-      if( hm%theory_level /= INDEPENDENT_PARTICLES) call hamiltonian_set_oct_exchange(hm, stphi, gr%mesh)
+      if( hm%theory_level /= INDEPENDENT_PARTICLES) call oct_exchange_set(hm%oct_exchange, stphi, gr%mesh)
       call prepare_inh()
       call hamiltonian_adjoint(hm)
+      call hamiltonian_update(hm, gr%mesh, time = tau)
       call zhamiltonian_apply_all(hm, ks%xc, gr%der, stchi, hchi, tau)
       call hamiltonian_not_adjoint(hm)
 
 
       call apply_inh()
-      if( hm%theory_level /= INDEPENDENT_PARTICLES) call hamiltonian_remove_oct_exchange(hm)
+      if( hm%theory_level /= INDEPENDENT_PARTICLES) call oct_exchange_remove(hm%oct_exchange)
       if(ion_dynamics_ions_move(ions)) call hamiltonian_remove_inh(hm)
     end subroutine f_chi
 
@@ -421,10 +450,15 @@ contains
     subroutine update_state(epsilon)
       FLOAT, intent(in) :: epsilon
 
-      st%zdontusepsi = st%zdontusepsi - M_zI * dt * hst%zdontusepsi * epsilon
-      if(propagate_chi) then
-        chi%zdontusepsi = chi%zdontusepsi - M_zI * dt * hchi%zdontusepsi * epsilon
-      end if
+      do ik = stphi%d%kpt%start, stphi%d%kpt%end
+        do ib = stphi%group%block_start, stphi%group%block_end
+          call batch_axpy(gr%mesh%np, -M_zI*dt*epsilon, hst%group%psib(ib, ik), st%group%psib(ib, ik))
+          if(propagate_chi) then
+            call batch_axpy(gr%mesh%np, -M_zI*dt*epsilon, hchi%group%psib(ib, ik), chi%group%psib(ib, ik))
+          end if
+        end do
+      end do
+      
       if(ion_dynamics_ions_move(ions)) then
         posfinal = posfinal + posk * epsilon
         velfinal = velfinal + velk * epsilon
@@ -504,7 +538,7 @@ contains
       end do
     end do
 
-    if(hamiltonian_oct_exchange(hm)) call hamiltonian_prepare_oct_exchange(hm, gr%mesh, zphi, ks%xc)
+    if(oct_exchange_enabled(hm%oct_exchange)) call oct_exchange_prepare(hm%oct_exchange, gr%mesh, zphi, ks%xc)
     call hamiltonian_update(hm, gr%mesh, time = time-dt)
     rhs1 = M_z0
     do ik = kp1, kp2
@@ -514,8 +548,8 @@ contains
     end do
     do ik = kp1, kp2
       do ist = st1, st2
-        if(hamiltonian_oct_exchange(hm)) then
-          call zoct_exchange_operator(hm, gr%der, rhs1(:, :, ist, ik), ist, ik)
+        if(oct_exchange_enabled(hm%oct_exchange)) then
+          call zoct_exchange_operator(hm%oct_exchange, gr%der, rhs1(:, :, ist, ik), ist, ik)
         end if
       end do
     end do
@@ -542,7 +576,7 @@ contains
       oldk2 = k2
 
       ! Set the Hamiltonian at the final time of the propagation
-      if(.not.hamiltonian_oct_exchange(hm_p)) then
+      if(.not.oct_exchange_enabled(hm_p%oct_exchange)) then
         do ik = kp1, kp2
           do ist = st1, st2
             call states_set_state(st, gr%mesh, ist, ik, k2(:, :, ist, ik))
@@ -558,7 +592,7 @@ contains
         vpsl1_op = hm%ep%vpsl
       end if
       call hamiltonian_update(hm, gr%mesh, time = time)
-      if(.not.hamiltonian_oct_exchange(hm_p)) then
+      if(.not.oct_exchange_enabled(hm_p%oct_exchange)) then
         if (i==1) then
           call potential_interpolation_get(tr%vksold, gr%mesh%np, st%d%nspin, 0, vhxc1_op)
           i = i + 1
@@ -615,11 +649,13 @@ contains
       do ik = kp1, kp2
         do ist = st1, st2
           do idim = 1, st%d%dim
-            dres = dres + zmf_nrm2(gr%mesh, k2(:, idim, ist, ik) - oldk2(:, idim, ist, ik))
+            dres = dres + zmf_nrm2(gr%mesh, k2(:, idim, ist, ik) - oldk2(:, idim, ist, ik), reduce = .false.)
           end do
         end do
       end do
 
+      call comm_allreduce(st%dom_st_kpt_mpi_grp%comm, dres)
+      
       if(dres < tr%scf_threshold) exit
     end do
 
@@ -1144,7 +1180,7 @@ contains
     if(move_ions_op) hm_p%ep%vpsl = vpsl1_op
     call hamiltonian_update(hm_p, grid_p%mesh, time = t_op + dt_op)
 
-    if(hamiltonian_oct_exchange(hm_p)) then
+    if(oct_exchange_enabled(hm_p%oct_exchange)) then
       zpsi_ = M_z0
       j = 1
       do ik = kp1, kp2
@@ -1156,7 +1192,7 @@ contains
           end do
         end do
       end do
-      call hamiltonian_prepare_oct_exchange(hm_p, grid_p%mesh, zpsi_, xc_p)
+      call oct_exchange_prepare(hm_p%oct_exchange, grid_p%mesh, zpsi_, xc_p)
     end if
 
     j = 1
@@ -1176,7 +1212,7 @@ contains
       end do
     end do
 
-    if(hamiltonian_oct_exchange(hm_p)) then
+    if(oct_exchange_enabled(hm_p%oct_exchange)) then
       j = 1
       do ik = kp1, kp2
         do ist = st1, st2
@@ -1186,7 +1222,7 @@ contains
             j = j + np
           end do
           opzpsi = M_z0
-          call zoct_exchange_operator(hm_p, grid_p%der, opzpsi, ist, ik)
+          call zoct_exchange_operator(hm_p%oct_exchange, grid_p%der, opzpsi, ist, ik)
 
           do idim = 1, dim
             yre(jj:jj+np-1) = yre(jj:jj+np-1) + real(M_zI * dt_op * M_HALF * opzpsi(1:np, idim))
@@ -1199,7 +1235,8 @@ contains
 
     SAFE_DEALLOCATE_A(zpsi)
     SAFE_DEALLOCATE_A(opzpsi)
-    PUSH_SUB(td_rk2op)
+    
+    POP_SUB(td_rk2op)
   end subroutine td_rk2op
   ! ---------------------------------------------------------
 
@@ -1238,7 +1275,7 @@ contains
     if(move_ions_op) hm_p%ep%vpsl = vpsl1_op
     call hamiltonian_update(hm_p, grid_p%mesh, time = t_op + dt_op)
 
-    if(hamiltonian_oct_exchange(hm_p)) then
+    if(oct_exchange_enabled(hm_p%oct_exchange)) then
       zpsi_ = M_z0
       j = 1
       do ik = kp1, kp2
@@ -1250,7 +1287,7 @@ contains
           end do
         end do
       end do
-      call hamiltonian_prepare_oct_exchange(hm_p, grid_p%mesh, zpsi_, xc_p)
+      call oct_exchange_prepare(hm_p%oct_exchange, grid_p%mesh, zpsi_, xc_p)
     end if
 
     j = 1
@@ -1271,7 +1308,7 @@ contains
       end do
     end do
 
-    if(hamiltonian_oct_exchange(hm_p)) then
+    if(oct_exchange_enabled(hm_p%oct_exchange)) then
       j = 1
       do ik = kp1, kp2
         do ist = st1, st2
@@ -1281,7 +1318,7 @@ contains
             j = j + np
           end do
           opzpsi = M_z0
-          call zoct_exchange_operator(hm_p, grid_p%der, opzpsi, ist, ik)
+          call zoct_exchange_operator(hm_p%oct_exchange, grid_p%der, opzpsi, ist, ik)
 
           do idim = 1, dim
             yre(jj:jj+np-1) = yre(jj:jj+np-1) + real(M_zI * dt_op * M_HALF * opzpsi(1:np, idim))
@@ -1298,7 +1335,7 @@ contains
   end subroutine td_rk2opt
   ! ---------------------------------------------------------
 
-end module propagator_rk_m
+end module propagator_rk_oct_m
 
 !! Local Variables:
 !! mode: f90

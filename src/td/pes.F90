@@ -15,27 +15,27 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: pes.F90 14737 2015-11-05 10:56:42Z philipp $
+!! $Id: pes.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module pes_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hamiltonian_m
-  use mesh_m
-  use messages_m
-  use mpi_m
-  use output_m
-  use parser_m
-  use pes_mask_m
-  use pes_rc_m
-  use pes_flux_m
-  use restart_m
-  use simul_box_m
-  use states_m
-  use varinfo_m
+module pes_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hamiltonian_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use output_oct_m
+  use parser_oct_m
+  use pes_mask_oct_m
+  use pes_spm_oct_m
+  use pes_flux_oct_m
+  use restart_oct_m
+  use simul_box_oct_m
+  use states_oct_m
+  use varinfo_oct_m
     
   implicit none
 
@@ -52,8 +52,8 @@ module pes_m
     pes_dump
 
   type pes_t
-    logical :: calc_rc
-    type(pes_rc_t) :: rc
+    logical :: calc_spm
+    type(pes_spm_t) :: spm
 
     logical :: calc_mask
     type(pes_mask_t) :: mask
@@ -65,7 +65,7 @@ module pes_m
 
   integer, parameter ::     &
     PHOTOELECTRON_NONE = 0, &
-    PHOTOELECTRON_RC   = 2, &
+    PHOTOELECTRON_SPM  = 2, &
     PHOTOELECTRON_MASK = 4, &
     PHOTOELECTRON_FLUX = 8
 
@@ -73,16 +73,14 @@ contains
 
   ! ---------------------------------------------------------
   !elemental (PUSH/POP)_SUB are not PURE.
-  subroutine pes_rc_nullify(this)
-    type(pes_rc_t), intent(out) :: this
+  subroutine pes_spm_nullify(this)
+    type(pes_spm_t), intent(out) :: this
     !
-    PUSH_SUB(pes_rc_nullify)
-    this%points        =>null()
+    PUSH_SUB(pes_spm_nullify)
     this%wf            =>null()
-    this%rankmin       =>null()
-    POP_SUB(pes_rc_nullify)
+    POP_SUB(pes_spm_nullify)
     return
-  end subroutine pes_rc_nullify
+  end subroutine pes_spm_nullify
 
   ! ---------------------------------------------------------
   !elemental (PUSH/POP)_SUB are not PURE.
@@ -106,8 +104,8 @@ contains
     type(pes_t), intent(out) :: this
     !
     PUSH_SUB(pes_nullify)
-    !this%calc_rc=.false.
-    call pes_rc_nullify(this%rc)
+    !this%calc_spm=.false.
+    call pes_spm_nullify(this%spm)
     !this%calc_mask=.false.
     call pes_mask_nullify(this%mask)
     POP_SUB(pes_nullify)
@@ -132,9 +130,6 @@ contains
     
     call pes_nullify(pes)
 
-    call messages_obsolete_variable('CalcPES_rc', 'PhotoElectronSpectrum')
-    call messages_obsolete_variable('CalcPES_mask', 'PhotoElectronSpectrum')
-
     !%Variable PhotoElectronSpectrum
     !%Type integer
     !%Default none
@@ -143,10 +138,10 @@ contains
     !%This variable controls the method used for the calculation of
     !%the photoelectron spectrum. You can specify more than one value
     !%by giving them as a sum, for example:
-    !% <tt>PhotoElectronSpectrum = pes_rc + pes_mask</tt>
+    !% <tt>PhotoElectronSpectrum = pes_spm + pes_mask</tt>
     !%Option none 0
     !% The photoelectron spectrum is not calculated. This is the default.
-    !%Option pes_rc 2
+    !%Option pes_spm 2
     !% Store the wavefunctions at specific points in order to 
     !% calculate the photoelectron spectrum at a point far in the box as proposed in 
     !% A. Pohl, P.-G. Reinhard, and E. Suraud, <i>Phys. Rev. Lett.</i> <b>84</b>, 5090 (2000).
@@ -166,24 +161,24 @@ contains
       call messages_input_error('PhotoElectronSpectrum')
     end if
     
-    pes%calc_rc = iand(photoelectron_flags, PHOTOELECTRON_RC) /= 0
+    pes%calc_spm  = iand(photoelectron_flags, PHOTOELECTRON_SPM) /= 0
     pes%calc_mask = iand(photoelectron_flags, PHOTOELECTRON_MASK) /= 0
     pes%calc_flux = iand(photoelectron_flags, PHOTOELECTRON_FLUX) /= 0
 
     !Header Photoelectron info
-    if(pes%calc_rc .or. pes%calc_mask .or. pes%calc_flux) then 
+    if(pes%calc_spm .or. pes%calc_mask .or. pes%calc_flux) then 
       write(str, '(a,i5)') 'Photoelectron'
       call messages_print_stress(stdout, trim(str))
     end if 
 
     
-    if(pes%calc_rc) call pes_rc_init(pes%rc, mesh, st, save_iter)
-    if(pes%calc_mask) call pes_mask_init(pes%mask, mesh, sb, st,hm,max_iter,dt)
-    if(pes%calc_flux) call pes_flux_init(pes%flux, mesh, st, hm)
+    if(pes%calc_spm)  call pes_spm_init(pes%spm, mesh, st, save_iter)
+    if(pes%calc_mask) call pes_mask_init(pes%mask, mesh, sb, st, hm, max_iter,dt)
+    if(pes%calc_flux) call pes_flux_init(pes%flux, mesh, st, hm, save_iter, max_iter)
 
 
     !Footer Photoelectron info
-    if(pes%calc_rc .or. pes%calc_mask .or. pes%calc_flux) then 
+    if(pes%calc_spm .or. pes%calc_mask .or. pes%calc_flux) then 
       call messages_print_stress(stdout)
     end if 
 
@@ -197,7 +192,7 @@ contains
 
     PUSH_SUB(pes_end)
 
-    if(pes%calc_rc)   call pes_rc_end  (pes%rc)
+    if(pes%calc_spm)   call pes_spm_end  (pes%spm)
     if(pes%calc_mask) call pes_mask_end(pes%mask)
     if(pes%calc_flux) call pes_flux_end(pes%flux)
 
@@ -218,9 +213,9 @@ contains
 
     PUSH_SUB(pes_calc)
 
-    if(pes%calc_rc)   call pes_rc_calc  (pes%rc, st, mesh, dt, iter, hm)
+    if(pes%calc_spm)   call pes_spm_calc  (pes%spm, st, mesh, dt, iter, hm)
     if(pes%calc_mask) call pes_mask_calc(pes%mask, mesh, st, dt, iter)
-    if(pes%calc_flux) call pes_flux_save(pes%flux, mesh, st, gr, hm, iter, maxiter, dt)
+    if(pes%calc_flux) call pes_flux_calc(pes%flux, mesh, st, gr, hm, iter, dt)
 
     POP_SUB(pes_calc)
   end subroutine pes_calc
@@ -240,12 +235,12 @@ contains
     PUSH_SUB(pes_output)
     
     if(mpi_grp_is_root(mpi_world)) then
-      if(pes%calc_rc) call pes_rc_output(pes%rc, st, iter, dt)
+      if(pes%calc_spm) call pes_spm_output(pes%spm, mesh, st, iter, dt)
     end if
 
     if(pes%calc_mask) call pes_mask_output (pes%mask, mesh, st,outp, "td.general/PESM", gr, geo,iter)
 
-    if(pes%calc_flux) call pes_flux_output(pes%flux, mesh%sb, dt)
+    if(pes%calc_flux) call pes_flux_output(pes%flux, mesh, mesh%sb, st, dt)
 
     POP_SUB(pes_output)
   end subroutine pes_output
@@ -268,7 +263,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing PES restart."
       call messages_info(1)
     end if
@@ -278,14 +273,14 @@ contains
     end if
 
     if (pes%calc_flux) then
-      call pes_flux_dump(restart, pes%flux, mesh, ierr)
+      call pes_flux_dump(restart, pes%flux, mesh, st, ierr)
     end if
 
-    if (pes%calc_rc) then
-      call pes_rc_dump(restart, pes%rc, st, ierr)
+    if (pes%calc_spm) then
+      call pes_spm_dump(restart, pes%spm, st, ierr)
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing PES restart done."
       call messages_info(1)
     end if
@@ -312,7 +307,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading PES restart."
       call messages_info(1)
     end if
@@ -322,14 +317,14 @@ contains
     end if
 
     if(pes%calc_flux) then
-      call pes_flux_load(restart, pes%flux, mesh, ierr)
+      call pes_flux_load(restart, pes%flux, mesh, st, ierr)
     end if
 
-    if (pes%calc_rc) then
-      call pes_rc_load(restart, pes%rc, st, ierr)
+    if (pes%calc_spm) then
+      call pes_spm_load(restart, pes%spm, st, ierr)
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading PES restart done."
       call messages_info(1)
     end if
@@ -349,7 +344,7 @@ contains
 
     if(mpi_grp_is_root(mpi_world)) then
 
-      if(pes%calc_rc)   call pes_rc_init_write (pes%rc, mesh, st)
+      if(pes%calc_spm)   call pes_spm_init_write (pes%spm, mesh, st)
 
     end if
 
@@ -358,7 +353,7 @@ contains
 
 
 
-end module pes_m
+end module pes_oct_m
 
 
 !! Local Variables:

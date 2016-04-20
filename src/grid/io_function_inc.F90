@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: io_function_inc.F90 14662 2015-10-09 16:28:49Z xavier $
+!! $Id: io_function_inc.F90 15084 2016-01-29 09:11:48Z dstrubbe $
 
 ! ---------------------------------------------------------
 !
@@ -66,7 +66,7 @@ subroutine X(io_function_input)(filename, mesh, ff, ierr, map)
       SAFE_ALLOCATE(ff_global(1:mesh%np_global))
       call X(io_function_input_global)(filename, mesh, ff_global, ierr, map)
     end if
-    if(in_debug_mode) call messages_debug_newlines(2)
+    if(debug%info) call messages_debug_newlines(2)
 
     ! Only root knows if the file was successfully read.
     ! Now, it tells everybody else.
@@ -1204,7 +1204,7 @@ contains
     ASSERT(present(geo))
     call write_xsf_geometry(iunit, geo, mesh)
 
-    write(iunit, '(a,i1,a)') 'BEGIN_BLOCK_DATAGRID', mesh%sb%dim, 'D'
+    write(iunit, '(a,i1,a)') 'BEGIN_BLOCK_DATAGRID_', mesh%sb%dim, 'D'
     write(iunit, '(4a)') 'units: coords = ', trim(units_abbrev(units_out%length)), &
                             ', function = ', trim(units_abbrev(unit))
     write(iunit, '(a,i1,a)') 'DATAGRID_', mesh%sb%dim, 'D_function'
@@ -1251,8 +1251,8 @@ contains
       end do
     end do
 
-    write(iunit, '(a,i1,a)') 'END_DATAGRID', mesh%sb%dim, 'D'
-    write(iunit, '(a,i1,a)') 'END_BLOCK_DATAGRID', mesh%sb%dim, 'D'
+    write(iunit, '(a,i1,a)') 'END_DATAGRID_', mesh%sb%dim, 'D'
+    write(iunit, '(a,i1,a)') 'END_BLOCK_DATAGRID_', mesh%sb%dim, 'D'
 
     call io_close(iunit)
 

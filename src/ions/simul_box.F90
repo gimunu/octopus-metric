@@ -16,33 +16,33 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: simul_box.F90 14511 2015-08-13 10:51:33Z ravindra $
+!! $Id: simul_box.F90 15288 2016-04-20 10:00:35Z umberto $
 
 #include "global.h"
 
-module simul_box_m
-  use atom_m
-  use blas_m
+module simul_box_oct_m
+  use atom_oct_m
+  use blas_oct_m
   use iso_c_binding
-  use geometry_m
-  use global_m
-  use io_m
-  use kpoints_m
-  use lalg_basic_m
-  use loct_m
-  use lookup_m
-  use math_m
-  use messages_m
-  use mpi_m
-  use parser_m
-  use profiling_m
-  use space_m
-  use species_m
-  use string_m
-  use symmetries_m
-  use unit_m
-  use unit_system_m
-  use varinfo_m
+  use geometry_oct_m
+  use global_oct_m
+  use io_oct_m
+  use kpoints_oct_m
+  use lalg_basic_oct_m
+  use loct_oct_m
+  use lookup_oct_m
+  use math_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use space_oct_m
+  use species_oct_m
+  use string_oct_m
+  use symmetries_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -804,15 +804,13 @@ contains
 
     pd = sb%periodic_dim
 
-!     print *,"ini cooridinates",ratom(1:pd)
-
     if (simul_box_is_periodic(sb)) then
       if(.not. geo%reduced_coordinates) then
         !convert the position to reduced coordinates
 !         xx(1:pd) = matmul(ratom(1:pd), sb%klattice(1:pd, 1:pd))
          xx(1:pd) = matmul(ratom(1:pd), sb%klattice_primitive(1:pd, 1:pd))
 !TODO: change previous line to klattice (not prim) and remove next line
-! UDG: for some reason doing this breaks many tests 
+! (for some reason doing this breaks many tests UDG) 
          xx(1:pd) = xx(1:pd)/(M_TWO*sb%lsize(1:pd))
       else
         ! in this case coordinates are already in reduced space
@@ -831,14 +829,11 @@ contains
       ASSERT(all(xx(1:pd) >= M_ZERO))
       ASSERT(all(xx(1:pd) < CNST(1.0)))
 
-!       xx(1:pd) = (xx(1:pd) - M_HALF)
-!       ratom(1:pd) = matmul(sb%rlattice(1:pd, 1:pd), xx(1:pd))
       xx(1:pd) = (xx(1:pd) - M_HALF)*M_TWO*sb%lsize(1:pd)
 !TODO: change next line to rlattice (not prim) and remove previous line
-! UDG: for some reason doing this breaks many tests 
+! (for some reason doing this breaks many tests UDG) 
       ratom(1:pd) = matmul(sb%rlattice_primitive(1:pd, 1:pd), xx(1:pd))
 
-!       print *,"fin cooridinates",ratom(1:pd)
 
     end if
     
@@ -1515,7 +1510,7 @@ contains
     POP_SUB(simul_box_min_distance)
   end function simul_box_min_distance
 
-end module simul_box_m
+end module simul_box_oct_m
 
 !! Local Variables:
 !! mode: f90

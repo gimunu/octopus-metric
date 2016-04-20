@@ -22,15 +22,15 @@
 #define HASH_KEY_TYPE_NAME json_object_t
 #define HASH_VAL_TEMPLATE_NAME base_term
 
-module base_term_m
+module base_term_oct_m
 
-  use base_system_m
-  use config_dict_m
-  use global_m
-  use json_m
-  use kinds_m
-  use messages_m
-  use profiling_m
+  use base_system_oct_m
+  use config_dict_oct_m
+  use global_oct_m
+  use json_oct_m
+  use kinds_oct_m
+  use messages_oct_m
+  use profiling_oct_m
 
 #define LIST_TEMPLATE_NAME base_term
 #define LIST_INCLUDE_PREFIX
@@ -107,12 +107,12 @@ module base_term_m
   end type base_term_t
 
   interface base_term__init__
-    module procedure base_term__init__term
+    module procedure base_term__init__type
     module procedure base_term__init__copy
   end interface base_term__init__
 
   interface base_term_init
-    module procedure base_term_init_term
+    module procedure base_term_init_type
     module procedure base_term_init_copy
   end interface base_term_init
 
@@ -132,11 +132,11 @@ module base_term_m
   end interface base_term_get
 
   interface base_term_copy
-    module procedure base_term_copy_term
+    module procedure base_term_copy_type
   end interface base_term_copy
 
   interface base_term_end
-    module procedure base_term_end_term
+    module procedure base_term_end_type
   end interface base_term_end
 
 #define TEMPLATE_PREFIX base_term
@@ -158,6 +158,32 @@ contains
 #undef HASH_INCLUDE_BODY
 
   ! ---------------------------------------------------------
+  subroutine base_term__new__(this)
+    type(base_term_t), pointer :: this
+
+    PUSH_SUB(base_term__new__)
+
+    nullify(this)
+    SAFE_ALLOCATE(this)
+
+    POP_SUB(base_term__new__)
+  end subroutine base_term__new__
+
+  ! ---------------------------------------------------------
+  subroutine base_term__del__(this)
+    type(base_term_t), pointer :: this
+
+    PUSH_SUB(base_term__del__)
+
+    if(associated(this))then
+      SAFE_DEALLOCATE_P(this)
+    end if
+    nullify(this)
+
+    POP_SUB(base_term__del__)
+  end subroutine base_term__del__
+
+  ! ---------------------------------------------------------
   subroutine base_term_new(this, that)
     type(base_term_t),  target, intent(inout) :: this
     type(base_term_t), pointer                :: that
@@ -165,24 +191,12 @@ contains
     PUSH_SUB(base_term_new)
 
     nullify(that)
-    SAFE_ALLOCATE(that)
+    call base_term__new__(that)
     that%prnt => this
     call base_term_list_push(this%list, that)
 
     POP_SUB(base_term_new)
   end subroutine base_term_new
-
-  ! ---------------------------------------------------------
-  subroutine base_term__idel__(this)
-    type(base_term_t), pointer :: this
-
-    PUSH_SUB(base_term__idel__)
-
-    SAFE_DEALLOCATE_P(this)
-    nullify(this)
-
-    POP_SUB(base_term__idel__)
-  end subroutine base_term__idel__
 
   ! ---------------------------------------------------------
   subroutine base_term_del(this)
@@ -194,7 +208,7 @@ contains
       if(associated(this%prnt))then
         call base_term_list_del(this%prnt%list, this)
         call base_term_end(this)
-        call base_term__idel__(this)
+        call base_term__del__(this)
       end if
     end if
 
@@ -202,34 +216,21 @@ contains
   end subroutine base_term_del
 
   ! ---------------------------------------------------------
-  subroutine base_term__inull__(this)
-    type(base_term_t), intent(inout) :: this
-
-    PUSH_SUB(base_term__inull__)
-
-    nullify(this%config, this%sys, this%prnt)
-    this%energy = 0.0_wp
-
-    POP_SUB(base_term__inull__)
-  end subroutine base_term__inull__
-
-  ! ---------------------------------------------------------
-  subroutine base_term__init__term(this, sys, config)
+  subroutine base_term__init__type(this, sys, config)
     type(base_term_t),           intent(out) :: this
     type(base_system_t), target, intent(in)  :: sys
     type(json_object_t), target, intent(in)  :: config
 
-    PUSH_SUB(base_term__init__term)
+    PUSH_SUB(base_term__init__type)
 
-    call base_term__inull__(this)
     this%config => config
     this%sys => sys
     call config_dict_init(this%dict)
     call base_term_hash_init(this%hash)
     call base_term_list_init(this%list)
 
-    POP_SUB(base_term__init__term)
-  end subroutine base_term__init__term
+    POP_SUB(base_term__init__type)
+  end subroutine base_term__init__type
 
   ! ---------------------------------------------------------
   subroutine base_term__init__copy(this, that)
@@ -246,17 +247,17 @@ contains
   end subroutine base_term__init__copy
 
   ! ---------------------------------------------------------
-  subroutine base_term_init_term(this, sys, config)
+  subroutine base_term_init_type(this, sys, config)
     type(base_term_t),   intent(out) :: this
     type(base_system_t), intent(in)  :: sys
     type(json_object_t), intent(in)  :: config
 
-    PUSH_SUB(base_term_init_term)
+    PUSH_SUB(base_term_init_type)
 
     call base_term__init__(this, sys, config)
 
-    POP_SUB(base_term_init_term)
-  end subroutine base_term_init_term
+    POP_SUB(base_term_init_type)
+  end subroutine base_term_init_type
 
   ! ---------------------------------------------------------
   recursive subroutine base_term_init_copy(this, that)
@@ -370,7 +371,7 @@ contains
     character(len=CONFIG_DICT_NAME_LEN) :: name
     integer                             :: ierr
 
-    PUSH_SUB(base_term_init_sets)
+    PUSH_SUB(base_term_sets)
 
     ASSERT(associated(this%config))
     call json_get(config, "name", name, ierr)
@@ -378,7 +379,7 @@ contains
     call config_dict_set(this%dict, trim(adjustl(name)), config)
     call base_term_hash_set(this%hash, config, that)
 
-    POP_SUB(base_term_init_sets)
+    POP_SUB(base_term_sets)
   end subroutine base_term_sets
 
   ! ---------------------------------------------------------
@@ -480,14 +481,14 @@ contains
     prnt => this%prnt
     call  base_term__end__(this)
     if(associated(that%config).and.associated(that%sys))&
-      call base_term__init__(this, that%sys, that%config)
+      call base_term__init__(this, that)
     this%prnt => prnt
 
     POP_SUB(base_term__copy__)
   end subroutine base_term__copy__
 
   ! ---------------------------------------------------------
-  recursive subroutine base_term_copy_term(this, that)
+  recursive subroutine base_term_copy_type(this, that)
     type(base_term_t), intent(inout) :: this
     type(base_term_t), intent(in)    :: that
 
@@ -496,7 +497,7 @@ contains
     type(json_object_t), pointer :: cnfg
     integer                      :: ierr
 
-    PUSH_SUB(base_term_copy_term)
+    PUSH_SUB(base_term_copy_type)
 
     nullify(cnfg, osub, isub)
     call base_term_end(this)
@@ -513,8 +514,8 @@ contains
     call base_term_end(iter)
     nullify(cnfg, osub, isub)
 
-    POP_SUB(base_term_copy_term)
-  end subroutine base_term_copy_term
+    POP_SUB(base_term_copy_type)
+  end subroutine base_term_copy_type
 
   ! ---------------------------------------------------------
   subroutine base_term__end__(this)
@@ -522,7 +523,8 @@ contains
 
     PUSH_SUB(base_term__end__)
 
-    call base_term__inull__(this)
+    nullify(this%config, this%sys, this%prnt)
+    this%energy = 0.0_wp
     call config_dict_end(this%dict)
     call base_term_hash_end(this%hash)
     call base_term_list_end(this%list)
@@ -531,25 +533,25 @@ contains
   end subroutine base_term__end__
 
   ! ---------------------------------------------------------
-  recursive subroutine base_term_end_term(this)
+  recursive subroutine base_term_end_type(this)
     type(base_term_t), intent(inout) :: this
 
     type(base_term_t), pointer :: subs
 
-    PUSH_SUB(base_term_end_term)
+    PUSH_SUB(base_term_end_type)
 
     do
       nullify(subs)
       call base_term_list_pop(this%list, subs)
       if(.not.associated(subs))exit
       call base_term_end(subs)
-      call base_term__idel__(subs)
+      call base_term__del__(subs)
     end do
     nullify(subs)
     call base_term__end__(this)
 
-    POP_SUB(base_term_end_term)
-  end subroutine base_term_end_term
+    POP_SUB(base_term_end_type)
+  end subroutine base_term_end_type
 
 #define TEMPLATE_PREFIX base_term
 #define INCLUDE_BODY
@@ -557,7 +559,7 @@ contains
 #undef INCLUDE_BODY
 #undef TEMPLATE_PREFIX
 
-end module base_term_m
+end module base_term_oct_m
 
 #undef HASH_TEMPLATE_NAME
 #undef HASH_KEY_TEMPLATE_NAME

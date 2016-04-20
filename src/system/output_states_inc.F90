@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: output_states_inc.F90 14608 2015-09-28 23:34:18Z xavier $
+!! $Id: output_states_inc.F90 14869 2015-12-05 16:17:20Z jrfsousa $
 
 ! ---------------------------------------------------------
 subroutine output_states(st, gr, geo, dir, outp)
@@ -28,19 +28,27 @@ subroutine output_states(st, gr, geo, dir, outp)
   integer :: ik, ist, idim, idir, is, ierr, ip, nspin
   character(len=MAX_PATH_LEN) :: fname
   type(unit_t) :: fn_unit
-  type(ssys_density_iterator_t)        :: iter
-  type(ssys_density_t),        pointer :: subsys_density
-  type(ssys_density_t),        pointer :: base_density
-  character(len=SSYS_DENSITY_NAME_LEN) :: name
-  FLOAT, pointer :: pdensity(:, :)
+  type(base_density_iterator_t)        :: iter
+  type(base_density_t),        pointer :: subsys_density
+  type(base_density_t),        pointer :: base_density
+  character(len=BASE_DENSITY_NAME_LEN) :: name
+  FLOAT,       dimension(:,:), pointer :: density
   FLOAT, allocatable :: dtmp(:), elf(:,:), polarization(:, :)
   CMPLX, allocatable :: ztmp(:)
 
   PUSH_SUB(output_states)
 
-  nullify(subsys_density, base_density, pdensity)
+  nullify(subsys_density, base_density, density)
   if(iand(outp%what, OPTION__OUTPUT__DENSITY) /= 0) then
     fn_unit = units_out%length**(-gr%mesh%sb%dim)
+    if(associated(st%subsys_st))then
+      call base_states_get(st%subsys_st, subsys_density)
+      ASSERT(associated(subsys_density))
+      call base_density_get(subsys_density, density)
+      ASSERT(associated(density))
+    else
+      density => st%rho
+    end if
     do is = 1, st%d%nspin
       if(st%d%nspin == 1) then
         write(fname, '(a)') 'density'
@@ -55,21 +63,19 @@ subroutine output_states(st, gr, geo, dir, outp)
         SAFE_DEALLOCATE_A(ztmp)
       else
         call dio_function_output(outp%how, dir, fname, gr%fine%mesh, &
-          st%rho(:, is), fn_unit, ierr, geo = geo, grp = st%dom_st_kpt_mpi_grp)
+          density(:, is), fn_unit, ierr, geo = geo, grp = st%dom_st_kpt_mpi_grp)
       end if
     end do
-    if(associated(st%subsys_st))then
-      call ssys_states_get(st%subsys_st, subsys_density)
-      ASSERT(associated(subsys_density))
-      call ssys_density_init(iter, subsys_density)
+    if(associated(subsys_density))then
+      call base_density_init(iter, subsys_density)
       do
-        nullify(base_density, pdensity)
-        call ssys_density_next(iter, name, base_density, ierr)
-        if(ierr/=SSYS_DENSITY_OK)exit
+        nullify(base_density, density)
+        call base_density_next(iter, name, base_density, ierr)
+        if(ierr/=BASE_DENSITY_OK)exit
         ASSERT(associated(base_density))
-        call ssys_density_get(base_density, pdensity)
-        ASSERT(associated(pdensity))
-        call ssys_density_get(base_density, nspin=nspin)
+        call base_density_get(base_density, density)
+        ASSERT(associated(density))
+        call base_density_get(base_density, nspin=nspin)
         ASSERT(nspin>0)
         do is = 1, nspin
           if(nspin>1) then
@@ -78,11 +84,11 @@ subroutine output_states(st, gr, geo, dir, outp)
             write(fname, "(a,'-',a)") "density", trim(adjustl(name))
           end if
           call dio_function_output(outp%how, dir, fname, gr%fine%mesh, &
-            pdensity(:,is), fn_unit, ierr, geo=geo, grp=st%dom_st_kpt_mpi_grp)
+            density(:,is), fn_unit, ierr, geo=geo, grp=st%dom_st_kpt_mpi_grp)
         end do
       end do 
-      call ssys_density_end(iter)
-      nullify(subsys_density, base_density, pdensity)
+      call base_density_end(iter)
+      nullify(subsys_density, base_density, density)
     end if    
   end if
 

@@ -1,18 +1,18 @@
 #include "global.h"
 
-module frozen_external_m
+module frozen_external_oct_m
 
-  use base_potential_m
-  use basis_m
-  use fio_external_m
-  use global_m
-  use json_m
-  use kinds_m
-  use mesh_m
-  use messages_m
-  use profiling_m
-  use simulation_m
-  use space_m
+  use base_potential_oct_m
+  use basis_oct_m
+  use fio_external_oct_m
+  use global_oct_m
+  use json_oct_m
+  use kinds_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use simulation_oct_m
+  use space_oct_m
 
   implicit none
 
@@ -55,7 +55,7 @@ contains
     SAFE_ALLOCATE(x(space%dim))
     do indx = 1, np
       call basis_to_internal(basis, mesh%x(indx,1:space%dim), x)
-      call fio_external_eval(intrpl, x, pot)
+      call fio_external_intrpl_eval(intrpl, x, pot)
       potn(indx) = potn(indx) + pot
     end do
     SAFE_DEALLOCATE_A(x)
@@ -77,16 +77,16 @@ contains
     type(fio_external_intrpl_t)  :: intrp
     integer                      :: type, ierr
 
-    PUSH_SUB(frozen_external__update__)
+    PUSH_SUB(frozen_external__acc__)
 
     nullify(cnfg, list)
     call base_potential_get(that, cnfg)
     ASSERT(associated(cnfg))
     call json_get(config, "type", type, ierr)
     if(ierr==JSON_OK)then
-      call fio_external_init(intrp, that, type)
+      call fio_external_intrpl_init(intrp, that, type)
     else
-      call fio_external_init(intrp, that)
+      call fio_external_intrpl_init(intrp, that)
     end if
     call json_get(config, "positions", list, ierr)
     ASSERT(ierr==JSON_OK)
@@ -99,12 +99,12 @@ contains
     end do
     call json_end(iter)
     nullify(cnfg, list)
-    call fio_external_end(intrp)
+    call fio_external_intrpl_end(intrp)
 
     POP_SUB(frozen_external__acc__)
   end subroutine frozen_external__acc__
 
-end module frozen_external_m
+end module frozen_external_oct_m
 
 !! Local Variables:
 !! mode: f90

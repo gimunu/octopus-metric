@@ -15,48 +15,48 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: em_resp.F90 14541 2015-09-06 15:13:42Z xavier $
+!! $Id: em_resp.F90 15255 2016-04-06 15:53:35Z irina $
 
 #include "global.h"
 
-module em_resp_m
-  use born_charges_m
-  use em_resp_calc_m
-  use forces_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hamiltonian_m
-  use output_m
-  use io_m
-  use kdotp_m
-  use kdotp_calc_m
-  use lalg_basic_m
-  use linear_response_m
-  use loct_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use mix_m
-  use mpi_m
-  use parser_m
-  use pert_m
-  use profiling_m
-  use restart_m
-  use simul_box_m
-  use smear_m
-  use sort_om
-  use species_m
-  use states_m
-  use states_dim_m
-  use states_restart_m
-  use sternheimer_m
-  use string_m
-  use system_m
-  use unit_m
-  use unit_system_m
-  use utils_m
-  use v_ks_m
+module em_resp_oct_m
+  use born_charges_oct_m
+  use em_resp_calc_oct_m
+  use forces_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hamiltonian_oct_m
+  use output_oct_m
+  use io_oct_m
+  use kdotp_oct_m
+  use kdotp_calc_oct_m
+  use lalg_basic_oct_m
+  use linear_response_oct_m
+  use loct_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mix_oct_m
+  use mpi_oct_m
+  use parser_oct_m
+  use pert_oct_m
+  use profiling_oct_m
+  use restart_oct_m
+  use simul_box_oct_m
+  use smear_oct_m
+  use sort_oct_m
+  use species_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use states_restart_oct_m
+  use sternheimer_oct_m
+  use string_oct_m
+  use system_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use utils_oct_m
+  use v_ks_oct_m
   
   implicit none
 
@@ -119,18 +119,20 @@ contains
     type(lr_t), allocatable :: kdotp_em_lr2(:, :, :, :)
     type(lr_t), allocatable :: b_lr(:, :), e_lr(:, :)
     type(lr_t), allocatable :: kb_lr(:, :, :), k2_lr(:, :, :)
-    type(lr_t), allocatable :: ke_lr(:, :, :), be_lr(:, :, :)
+    type(lr_t), allocatable :: ke_lr(:, :, :)
     type(pert_t)            :: pert_kdotp, pert2_none, pert_b
 
     integer :: sigma, sigma_alt, ndim, idir, idir2, ierr, iomega, ifactor, nsigma_eff, ipert
+    integer :: ierr_e(3), ierr_e1(3), ierr_e2(3) 
     character(len=100) :: dirname_output, str_tmp
-    logical :: complex_response, have_to_calculate, use_kdotp, opp_freq, exact_freq, complex_wfs
+    logical :: complex_response, have_to_calculate, use_kdotp, opp_freq, &
+      exact_freq(3), exact_freq1(3), complex_wfs
 
     FLOAT :: closest_omega, last_omega, frequency
     FLOAT, allocatable :: dl_eig(:,:,:)
     CMPLX :: frequency_eta, frequency_zero
     type(restart_t) :: gs_restart, restart_load, restart_dump, kdotp_restart
-    integer, parameter :: PB = 1, PK2 = 2, PKB = 3, PKE = 4, PBE = 5, PE = 6
+    integer, parameter :: PB = 1, PK2 = 2, PKB = 3, PKE = 4, PE = 5
 
     PUSH_SUB(em_resp_run)
 
@@ -358,33 +360,28 @@ contains
       end if
       call messages_experimental("Magneto-optical response")
       SAFE_ALLOCATE(b_lr(1:gr%sb%dim, 1:1))
-       do idir = 1, gr%sb%dim
+      SAFE_ALLOCATE(e_lr(1:gr%sb%dim, 1:em_vars%nsigma))
+      do idir = 1, gr%sb%dim
         call lr_init(b_lr(idir, 1))
         call lr_allocate(b_lr(idir, 1), sys%st, sys%gr%mesh)
+        do sigma = 1, em_vars%nsigma
+          call lr_init(e_lr(idir, sigma))
+          call lr_allocate(e_lr(idir, sigma), sys%st, sys%gr%mesh)
+        end do
       end do
       
       if(use_kdotp) then
         SAFE_ALLOCATE(ke_lr(1:gr%sb%dim, 1:gr%sb%dim, 1:em_vars%nsigma))
-        SAFE_ALLOCATE(be_lr(1:gr%sb%dim, 1:gr%sb%dim, 1:em_vars%nsigma))
         do idir = 1, gr%sb%dim
           do idir2 = 1, gr%sb%dim
             do sigma = 1, em_vars%nsigma
               call lr_init(ke_lr(idir, idir2, sigma))
               call lr_allocate(ke_lr(idir, idir2, sigma), sys%st, sys%gr%mesh)
-              call lr_init(be_lr(idir, idir2, sigma))
-              call lr_allocate(be_lr(idir, idir2, sigma), sys%st, sys%gr%mesh)
             end do
           end do
         end do
       else
         call pert_init(pert_b, PERTURBATION_MAGNETIC,  sys%gr, sys%geo)
-        SAFE_ALLOCATE(e_lr(1:gr%sb%dim, 1:em_vars%nsigma))
-        do idir = 1, gr%sb%dim
-          do sigma = 1, em_vars%nsigma
-            call lr_init(e_lr(idir, sigma))
-            call lr_allocate(e_lr(idir, sigma), sys%st, sys%gr%mesh)
-          end do
-        end do
       end if
     end if
 
@@ -404,6 +401,9 @@ contains
         end if
 
         ierr = 0
+        ierr_e(:) = 0
+        ierr_e1(:) = 0
+        ierr_e2(:) = 0
 
         have_to_calculate = .true.
         opp_freq = .false.
@@ -508,7 +508,8 @@ contains
 
         if(have_to_calculate) then 
 
-          exact_freq = .false.
+          exact_freq(:) = .false.
+          exact_freq1(:) = .false.
 
           if(states_are_real(sys%st)) then
             call drun_sternheimer()
@@ -595,28 +596,24 @@ contains
       call sternheimer_end(sh_mo)
       do idir = 1, gr%sb%dim
         call lr_dealloc(b_lr(idir, 1))
+        do sigma = 1, em_vars%nsigma
+          call lr_dealloc(e_lr(idir, sigma))
+        end do
       end do
       SAFE_DEALLOCATE_A(b_lr)
+      SAFE_DEALLOCATE_A(e_lr)
       
       if(use_kdotp) then
         do idir = 1, gr%sb%dim 
           do idir2 = 1, gr%sb%dim
             do sigma = 1, em_vars%nsigma
               call lr_dealloc(ke_lr(idir, idir2, sigma))
-              call lr_dealloc(be_lr(idir, idir2, sigma))
             end do
           end do
         end do
-        SAFE_DEALLOCATE_A(be_lr)
         SAFE_DEALLOCATE_A(ke_lr)
       else
         call pert_end(pert_b)
-        do idir = 1, gr%sb%dim
-          do sigma = 1, em_vars%nsigma
-            call lr_dealloc(e_lr(idir, sigma))
-          end do
-        end do
-        SAFE_DEALLOCATE_A(e_lr)
       end if
     end if
 
@@ -1305,12 +1302,14 @@ contains
   ! ---------------------------------------------------------
   !> See D Varsano, LA Espinosa Leal, Xavier Andrade, MAL Marques, Rosa di Felice, Angel Rubio,
   !! Phys. Chem. Chem. Phys. 11, 4481 (2009)
-    subroutine out_circular_dichroism
+    subroutine out_circular_dichroism()
+      
       type(pert_t) :: angular_momentum
       integer :: idir
       FLOAT :: ff
       CMPLX :: dic
-
+      R_TYPE, pointer :: psi(:, :, :, :)
+  
       PUSH_SUB(em_resp_output.out_circular_dichroism)
 
       if(states_are_complex(st) .and. em_vars%nsigma == 2) then       
@@ -1320,13 +1319,19 @@ contains
 
         call pert_init(angular_momentum, PERTURBATION_MAGNETIC, gr, geo)
         
+        SAFE_ALLOCATE(psi(1:gr%mesh%np_part, 1:st%d%dim, st%st_start:st%st_end, st%d%kpt%start:st%d%kpt%end))
+
+        call states_get_state(st, gr%mesh, psi)
+
         dic = M_ZERO
         do idir = 1, gr%sb%dim
           call pert_setup_dir(angular_momentum, idir)
           dic = dic &
-            + zpert_expectation_value(angular_momentum, gr, geo, hm, st, st%zdontusepsi, em_vars%lr(idir, 1, ifactor)%zdl_psi) &
-            + zpert_expectation_value(angular_momentum, gr, geo, hm, st, em_vars%lr(idir, 2, ifactor)%zdl_psi, st%zdontusepsi)
+            + zpert_expectation_value(angular_momentum, gr, geo, hm, st, psi, em_vars%lr(idir, 1, ifactor)%zdl_psi) &
+            + zpert_expectation_value(angular_momentum, gr, geo, hm, st, em_vars%lr(idir, 2, ifactor)%zdl_psi, psi)
         end do
+
+        SAFE_DEALLOCATE_P(psi)
         
         call pert_end(angular_momentum)
         
@@ -1610,7 +1615,7 @@ contains
 
   end subroutine out_hyperpolarizability
 
-end module em_resp_m
+end module em_resp_oct_m
 
 !! Local Variables:
 !! mode: f90

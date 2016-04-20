@@ -1,17 +1,17 @@
 #include "global.h"
 
-module grid_intrf_m
+module grid_intrf_oct_m
 
-  use derivatives_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use json_m
-  use mesh_m
-  use messages_m
-  use profiling_m
-  use simul_box_m
-  use space_m
+  use derivatives_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use json_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
+  use space_oct_m
 
   implicit none
 
@@ -23,8 +23,8 @@ module grid_intrf_m
   public ::            &
     grid_intrf_new,    &
     grid_intrf_del,    &
+    grid_intrf_assoc,  &
     grid_intrf_init,   &
-    grid_intrf_start,  &
     grid_intrf_set,    &
     grid_intrf_get,    &
     grid_intrf_copy,   & 
@@ -54,6 +54,7 @@ module grid_intrf_m
   end interface grid_intrf_del
 
   interface grid_intrf_init
+    module procedure grid_intrf_init_config
     module procedure grid_intrf_init_type
     module procedure grid_intrf_init_copy
   end interface grid_intrf_init
@@ -112,10 +113,10 @@ contains
 
     interface
       subroutine grid_type_init(this, geo, space, config)
-        use geometry_m
-        use grid_m
-        use json_m
-        use space_m
+        use geometry_oct_m
+        use grid_oct_m
+        use json_oct_m
+        use space_oct_m
         type(grid_t),        intent(out) :: this
         type(geometry_t),    intent(in)  :: geo
         type(space_t),       intent(in)  :: space
@@ -157,7 +158,7 @@ contains
 
     interface
       subroutine grid_type_end(this)
-        use grid_m
+        use grid_oct_m
         type(grid_t), intent(inout) :: this
       end subroutine grid_type_end
     end interface
@@ -174,6 +175,42 @@ contains
     
     POP_SUB(grid_intrf_del_pass)
   end subroutine grid_intrf_del_pass
+
+  ! ---------------------------------------------------------
+  function grid_intrf_assoc(this) result(that)
+    type(grid_intrf_t), intent(in) :: this
+
+    logical :: that
+
+    PUSH_SUB(grid_intrf_assoc)
+
+    ASSERT(associated(this%config))
+    ASSERT(associated(this%space))
+    ASSERT(associated(this%geo))
+    select case(this%type)
+    case(GRID_NULL)
+      ASSERT(.not.associated(this%grid))
+      that = .false.
+    case(GRID_ASSC,GRID_ALLC)
+      ASSERT(associated(this%grid))
+      that = .true.
+    case default
+      ASSERT(.false.)
+    end select
+
+    POP_SUB(grid_intrf_assoc)
+  end function grid_intrf_assoc
+
+  ! ---------------------------------------------------------
+  subroutine grid_intrf_init_config(this)
+    type(json_object_t), intent(out) :: this
+
+    PUSH_SUB(grid_intrf_init_config)
+
+    call json_init(this)
+
+    POP_SUB(grid_intrf_init_config)
+  end subroutine grid_intrf_init_config
 
   ! ---------------------------------------------------------
   subroutine grid_intrf_init_type(this, geo, space, config)
@@ -198,7 +235,7 @@ contains
     type(grid_intrf_t), intent(out) :: this
     type(grid_intrf_t), intent(in)  :: that
 
-    PUSH_SUB(grid_intrf_init_type)
+    PUSH_SUB(grid_intrf_init_copy)
     
     ASSERT(associated(that%config))
     ASSERT(associated(that%space))
@@ -207,22 +244,6 @@ contains
 
     POP_SUB(grid_intrf_init_copy)
   end subroutine grid_intrf_init_copy
-
-  ! ---------------------------------------------------------
-  subroutine grid_intrf_start(this)
-    type(grid_intrf_t), intent(in) :: this
-
-    PUSH_SUB(grid_intrf_start)
-
-    ASSERT(associated(this%config))
-    ASSERT(associated(this%space))
-    ASSERT(associated(this%geo))
-    ASSERT(associated(this%grid))
-    ASSERT(this%space%dim==this%grid%sb%dim)
-    ASSERT(this%type/=GRID_NULL)
-
-    POP_SUB(grid_intrf_start)
-  end subroutine grid_intrf_start
 
   ! ---------------------------------------------------------
   subroutine grid_intrf_set_grid(this, that)
@@ -396,7 +417,7 @@ contains
     POP_SUB(grid_intrf_end)
   end subroutine grid_intrf_end
 
-end module grid_intrf_m
+end module grid_intrf_oct_m
 
 !! Local Variables:
 !! mode: f90

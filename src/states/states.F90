@@ -15,60 +15,60 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: states.F90 14739 2015-11-05 18:09:17Z xavier $
+!! $Id: states.F90 15283 2016-04-17 03:24:06Z xavier $
 
 #include "global.h"
 
-module states_m
-  use blacs_proc_grid_m
-  use calc_mode_par_m
+module states_oct_m
+  use base_density_oct_m
+  use base_states_oct_m
+  use blacs_proc_grid_oct_m
+  use calc_mode_par_oct_m
 #ifdef HAVE_OPENCL
   use cl
 #endif
-  use cmplxscl_m
-  use comm_m
-  use batch_m
-  use batch_ops_m
-  use blas_m
-  use derivatives_m
-  use distributed_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hardware_m
-  use io_m
-  use kpoints_m
-  use lalg_adv_m
-  use lalg_basic_m
-  use loct_m
-  use loct_pointer_m
-  use math_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use modelmb_particles_m
-  use mpi_m ! if not before parser_m, ifort 11.072 can`t compile with MPI2
-  use mpi_lib_m
-  use multicomm_m
+  use cmplxscl_oct_m
+  use comm_oct_m
+  use batch_oct_m
+  use batch_ops_oct_m
+  use blas_oct_m
+  use derivatives_oct_m
+  use distributed_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hardware_oct_m
+  use io_oct_m
+  use kpoints_oct_m
+  use lalg_adv_oct_m
+  use lalg_basic_oct_m
+  use loct_oct_m
+  use loct_pointer_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use modelmb_particles_oct_m
+  use mpi_oct_m ! if not before parser_m, ifort 11.072 can`t compile with MPI2
+  use mpi_lib_oct_m
+  use multicomm_oct_m
 #ifdef HAVE_OPENMP
   use omp_lib
 #endif
-  use opencl_m
-  use parser_m
-  use profiling_m
-  use restart_m
-  use simul_box_m
-  use smear_m
-  use states_group_m
-  use states_dim_m
-  use ssys_density_m
-  use ssys_states_m
-  use symmetrizer_m
-  use types_m
-  use unit_m
-  use unit_system_m
-  use utils_m
-  use varinfo_m
+  use opencl_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use restart_oct_m
+  use simul_box_oct_m
+  use smear_oct_m
+  use states_group_oct_m
+  use states_dim_oct_m
+  use symmetrizer_oct_m
+  use types_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use utils_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -100,7 +100,6 @@ module states_m
     states_are_complex,               &
     states_are_real,                  &
     states_set_complex,               &
-    states_blacs_blocksize,           &
     states_get_state,                 &
     states_set_state,                 &
     states_get_points,                &
@@ -115,22 +114,10 @@ module states_m
     states_block_size,                &
     zstates_eigenvalues_sum,          &
     cmplx_array2_t,                   &
-    states_wfs_t,                     &
     states_count_pairs,               &
     occupied_states,                  &
-    states_remote_access_start,       &
-    states_remote_access_stop,        &
-    states_get_block,                 &
-    states_release_block
+    states_type
 
-  !> cmplxscl: Left and Right eigenstates
-  type states_wfs_t    
-    CMPLX, pointer     :: zL(:, :, :, :) !< (np, st%d%dim, st%nst, st%d%nik)
-    CMPLX, pointer     :: zR(:, :, :, :) !< (np, st%d%dim, st%nst, st%d%nik)
-    FLOAT, pointer     :: dL(:, :, :, :) !< (np, st%d%dim, st%nst, st%d%nik)
-    FLOAT, pointer     :: dR(:, :, :, :) !< (np, st%d%dim, st%nst, st%d%nik)
-  end type states_wfs_t
-  
   !>cmplxscl: complex 2D matrices 
   type cmplx_array2_t    
     FLOAT, pointer     :: Re(:, :) !< Real components 
@@ -148,11 +135,6 @@ module states_m
     integer                  :: nst                   !< Number of states in each irreducible subspace
 
     logical                  :: only_userdef_istates  !< only use user-defined states as initial states in propagation
-    !> pointers to the wavefunctions
-    FLOAT, pointer           :: ddontusepsi(:,:,:,:)         !< ddontusepsi(sys%gr%mesh%np_part, st%d%dim, st%nst, st%d%nik)
-    CMPLX, pointer           :: zdontusepsi(:,:,:,:)         !< zdontusepsi(sys%gr%mesh%np_part, st%d%dim, st%nst, st%d%nik)
-   
-   
      
     type(cmplxscl_t)         :: cmplxscl              !< contain the cmplxscl parameters                 
     !> Pointers to complexified quantities. 
@@ -161,12 +143,9 @@ module states_m
     !! both density and eigenvalues become complex.
     !! In order to modify the code to include this changes we allocate the general structures and 
     !! make the restricted quantities point to a part of the structure.
-    ! For instance for the orbitals we allocate psi and make zpsi to point only to Right states as follows:
-    !! zpsi => psi%zR
-    !! Similarly for density and eigenvalues we make the old quantities to point to the real part:
+    !! For density and eigenvalues we make the old quantities to point to the real part:
     !! rho => zrho%Re
     !! eigenval => zeigenval%Re  
-    type(states_wfs_t)       :: psi          !< cmplxscl: Left psi%zL(:,:,:,:) and Right psi%zR(:,:,:,:) orbitals    
     type(cmplx_array2_t)     :: zrho         !< cmplxscl: the complexified density <psi%zL(:,:,:,:)|psi%zR(:,:,:,:)>
     type(cmplx_array2_t)     :: zeigenval    !< cmplxscl: the complexified eigenvalues 
     FLOAT,           pointer :: Imrho_core(:)  
@@ -192,7 +171,10 @@ module states_m
     FLOAT, pointer :: frozen_rho(:, :)
 
     !> Subsystem states.
-    type(ssys_states_t), pointer :: subsys_st
+    type(base_states_t), pointer :: subsys_st
+
+    logical        :: calc_eigenval
+    logical        :: uniform_occ   !< .true. if occupations are equal for all states: no empty states, and no smearing
     
     FLOAT, pointer :: eigenval(:,:) !< obviously the eigenvalues
     logical        :: fixed_occ     !< should the occupation numbers be fixed?
@@ -223,18 +205,11 @@ module states_m
 #ifdef HAVE_SCALAPACK
     type(blacs_proc_grid_t)     :: dom_st_proc_grid   !< The BLACS process grid for the domains-states plane
 #endif
+    type(distributed_t)         :: dist
     logical                     :: scalapack_compatible !< Whether the states parallelization uses ScaLAPACK layout
     integer                     :: lnst               !< Number of states on local node.
     integer                     :: st_start, st_end   !< Range of states processed by local node.
     integer, pointer            :: node(:)            !< To which node belongs each state.
-    !> Node r manages states st_range(1, r) to
-    !! st_range(2, r) for r = 0, ..., mpi_grp%size-1,
-    !! i. e. st_start = st_range(1, r) and
-    !! st_end = st_range(2, r) on node r.
-    integer, pointer            :: st_range(:, :)  
-    !> Number of states on node r, i. e.
-    !! st_num(r) = st_num(2, r)-st_num(1, r).
-    integer, pointer            :: st_num(:)         
     type(multicomm_all_pairs_t) :: ap                 !< All-pairs schedule.
 
     logical                     :: symmetrize_density
@@ -243,12 +218,12 @@ module states_m
 
   interface states_get_state
     module procedure dstates_get_state1, zstates_get_state1, dstates_get_state2, zstates_get_state2
-    module procedure dstates_get_state4, zstates_get_state4
+    module procedure dstates_get_state3, zstates_get_state3, dstates_get_state4, zstates_get_state4
   end interface states_get_state
 
   interface states_set_state
     module procedure dstates_set_state1, zstates_set_state1, dstates_set_state2, zstates_set_state2
-    module procedure dstates_set_state4, zstates_set_state4
+    module procedure dstates_set_state3, zstates_set_state3, dstates_set_state4, zstates_set_state4
   end interface states_set_state
 
   interface states_get_points
@@ -265,7 +240,8 @@ contains
 
     call states_dim_null(st%d)
     call states_group_null(st%group)
-
+    call distributed_nullify(st%dist)
+    
     st%d%orth_method = 0
     call modelmb_particles_nullify(st%modelmbparticles)
     nullify(st%mmb_nspindown)
@@ -276,15 +252,11 @@ contains
 
     st%cmplxscl%space = .false.
     !cmplxscl
-    nullify(st%psi%dL, st%psi%dR)
-    nullify(st%psi%zL, st%psi%zR)     
     nullify(st%zeigenval%Re, st%zeigenval%Im) 
     nullify(st%zrho%Re, st%zrho%Im)
     nullify(st%Imrho_core, st%Imfrozen_rho)
     nullify(st%psibL)
 
-    nullify(st%ddontusepsi, st%zdontusepsi)
-    
     nullify(st%user_def_states)
     nullify(st%rho, st%current)
     nullify(st%rho_core, st%frozen_rho)
@@ -295,7 +267,7 @@ contains
 #ifdef HAVE_SCALAPACK
     call blacs_proc_grid_nullify(st%dom_st_proc_grid)
 #endif
-    nullify(st%node,st%st_range, st%st_num)
+    nullify(st%node)
     nullify(st%ap%schedule)
 
     st%packed = .false.
@@ -358,7 +330,22 @@ contains
     !%End
     call parse_variable('ExcessCharge', M_ZERO, excess_charge)
 
-
+    !%Variable CalcEigenvalues
+    !%Type logical
+    !%Default yes
+    !%Section SCF
+    !%Description
+    !% (Experimental) When this variable is set to <tt>no</tt>,
+    !% Octopus will not calculate the eigenvalues or eigenvectors of
+    !% the Hamiltonian. Instead, Octopus will obtain the occupied
+    !% subspace. The advantage that calculation can be made faster by
+    !% avoiding subspace diagonalization and other calculations.
+    !%
+    !% This mode cannot be used with unoccupied states.    
+    !%End
+    call parse_variable('CalcEigenvalues', .true., st%calc_eigenval)
+    if(.not. st%calc_eigenval) call messages_experimental('CalcEigenvalues = .false.')
+    
     !%Variable TotalStates
     !%Type integer
     !%Default 0
@@ -551,8 +538,6 @@ contains
     call mpi_grp_init(st%mpi_grp, -1)
     st%parallel_in_states = .false.
 
-    nullify(st%ddontusepsi, st%zdontusepsi)
-
     call distributed_nullify(st%d%kpt, st%d%nik)
 
     call modelmb_particles_init (st%modelmbparticles,gr)
@@ -596,14 +581,14 @@ contains
   ! ---------------------------------------------------------
   subroutine states_add_substates(this, st)
     type(states_t),              intent(inout) :: this
-    type(ssys_states_t), target, intent(in)    :: st
+    type(base_states_t), target, intent(in)    :: st
 
     PUSH_SUB(states_add_substates)
 
     !> Substates are not compatible with complex scaling for now.
     ASSERT(.not.(this%cmplxscl%space.or.this%cmplxscl%time))
     ASSERT(.not.associated(this%subsys_st))
-    this%subsys_st=>st
+    this%subsys_st => st
 
     POP_SUB(states_add_substates)
   end subroutine states_add_substates
@@ -656,7 +641,7 @@ contains
     integer :: ik, ist, ispin, nspin, ncols, nrows, el_per_state, icol, start_pos, spin_n
     type(block_t) :: blk
     FLOAT :: rr, charge
-    logical :: integral_occs
+    logical :: integral_occs, unoccupied_states
     FLOAT, allocatable :: read_occs(:, :)
     FLOAT :: charge_in_block
 
@@ -858,10 +843,11 @@ contains
 
     call smear_init(st%smear, st%d%ispin, st%fixed_occ, integral_occs, kpoints)
 
+    unoccupied_states = (st%d%ispin /= SPINORS .and. st%nst*2 > st%qtot) .or. (st%d%ispin == SPINORS .and. st%nst > st%qtot)
+    
     if(.not. smear_is_semiconducting(st%smear) .and. .not. st%smear%method == SMEAR_FIXED_OCC) then
-      if((st%d%ispin /= SPINORS .and. st%nst * 2  <=  st%qtot) .or. &
-        (st%d%ispin == SPINORS .and. st%nst  <=  st%qtot)) then
-        call messages_write('Smearing needs unoccupied states (via ExtraStates) to be useful.')
+      if(.not. unoccupied_states) then
+        call messages_write('Smearing needs unoccupied states (via ExtraStates or TotalStates) to be useful.')
         call messages_warning()
       end if
     end if
@@ -877,6 +863,14 @@ contains
       call messages_fatal(2, only_root_writes = .true.)
     end if
 
+    st%uniform_occ = smear_is_semiconducting(st%smear) .and. .not. unoccupied_states
+
+    if(.not. st%calc_eigenval .and. .not. st%uniform_occ) then
+      call messages_write('Calculation of the eigenvalues is required with unoccupied states', new_line = .true.)
+      call messages_write('or smearing.')
+      call messages_fatal()
+    end if
+    
     POP_SUB(states_read_initial_occs)
   end subroutine states_read_initial_occs
 
@@ -966,11 +960,6 @@ contains
 
     PUSH_SUB(states_allocate_wfns)
 
-    if(associated(st%ddontusepsi).or.associated(st%zdontusepsi)) then
-      call messages_write('Trying to allocate wavefunctions that are already allocated.')
-      call messages_fatal()
-    end if
-
     if (present(wfs_type)) then
       ASSERT(wfs_type == TYPE_FLOAT .or. wfs_type == TYPE_CMPLX)
       st%priv%wfs_type = wfs_type
@@ -997,30 +986,6 @@ contains
 
     if(force) call states_set_complex(st)
 
-    st1 = st%st_start
-    st2 = st%st_end
-    k1 = st%d%kpt%start
-    k2 = st%d%kpt%end
-    np_part = mesh%np_part
-
-    if(.not. st%d%pack_states) then
-
-      if (states_are_real(st)) then
-        SAFE_ALLOCATE(st%ddontusepsi(1:np_part, 1:st%d%dim, st1:st2, k1:k2))
-      else        
-        SAFE_ALLOCATE(st%psi%zR(1:np_part, 1:st%d%dim, st1:st2, k1:k2))  
-        st%zdontusepsi => st%psi%zR
-        if(st%cmplxscl%space) then 
-          if (st%have_left_states) then
-            SAFE_ALLOCATE(st%psi%zL(1:np_part, 1:st%d%dim, st1:st2, k1:k2))  
-          else
-            st%psi%zL => st%psi%zR  
-          end if          
-        end if
-      end if
-
-    end if
-
     call states_init_block(st, mesh)
     call states_set_zero(st)
 
@@ -1046,7 +1011,7 @@ contains
   !! The set of batches st\%psib(1:st\%nblocks) contains the blocks themselves.
   subroutine states_init_block(st, mesh, verbose)
     type(states_t),           intent(inout) :: st
-    type(mesh_t),   optional, intent(in)    :: mesh
+    type(mesh_t),             intent(in)    :: mesh
     logical, optional,        intent(in)    :: verbose
 
     integer :: ib, iqn, ist
@@ -1106,34 +1071,19 @@ contains
           st%group%block_is_local(ib, iqn) = .true.
 
           if (states_are_real(st)) then
-            if(associated(st%ddontusepsi)) then
-              call batch_init(st%group%psib(ib, iqn), &
-                st%d%dim, bstart(ib), bend(ib), st%ddontusepsi(:, :, bstart(ib):bend(ib), iqn))
-            else
-              ASSERT(present(mesh))
-              call batch_init(st%group%psib(ib, iqn), st%d%dim, bend(ib) - bstart(ib) + 1)
-              call dbatch_allocate(st%group%psib(ib, iqn), bstart(ib), bend(ib), mesh%np_part)
-            end if
+            call batch_init(st%group%psib(ib, iqn), st%d%dim, bend(ib) - bstart(ib) + 1)
+            call dbatch_allocate(st%group%psib(ib, iqn), bstart(ib), bend(ib), mesh%np_part)
           else
-            if(associated(st%zdontusepsi)) then
-              call batch_init(st%group%psib(ib, iqn), &
-                st%d%dim, bstart(ib), bend(ib), st%zdontusepsi(:, :, bstart(ib):bend(ib), iqn))
-            else
-              ASSERT(present(mesh))
-              call batch_init(st%group%psib(ib, iqn), st%d%dim, bend(ib) - bstart(ib) + 1)
-              call zbatch_allocate(st%group%psib(ib, iqn), bstart(ib), bend(ib), mesh%np_part)
-            end if
+            call batch_init(st%group%psib(ib, iqn), st%d%dim, bend(ib) - bstart(ib) + 1)
+            call zbatch_allocate(st%group%psib(ib, iqn), bstart(ib), bend(ib), mesh%np_part)
+
             if(st%have_left_states) then !cmplxscl
-              if(associated(st%psi%zL)) then
-                call batch_init(st%psibL(ib, iqn), st%d%dim, bstart(ib), bend(ib), st%psi%zL(:, :, bstart(ib):bend(ib), iqn))
-              else
-                ASSERT(present(mesh))
-                call batch_init(st%psibL(ib, iqn), st%d%dim, bend(ib) - bstart(ib) + 1)
-                call zbatch_allocate(st%psibL(ib, iqn), bstart(ib), bend(ib), mesh%np_part)
-              end if 
+              call batch_init(st%psibL(ib, iqn), st%d%dim, bend(ib) - bstart(ib) + 1)
+              call zbatch_allocate(st%psibL(ib, iqn), bstart(ib), bend(ib), mesh%np_part)
             else
               st%psibL => st%group%psib                           
-            end if            
+            end if
+
           end if
           
         end do
@@ -1249,18 +1199,6 @@ contains
        st%group%block_initialized = .false.
     end if
 
-    if (states_are_real(st)) then
-      SAFE_DEALLOCATE_P(st%ddontusepsi)
-    else
-      nullify(st%zdontusepsi)
-      if(associated(st%psi%zL,target=st%psi%zR )) then
-        nullify(st%psi%zL)
-      else          
-        SAFE_DEALLOCATE_P(st%psi%zL) ! cmplxscl
-      end if
-      SAFE_DEALLOCATE_P(st%psi%zR) ! cmplxscl      
-    end if
-
     POP_SUB(states_deallocate_wfns)
   end subroutine states_deallocate_wfns
 
@@ -1271,16 +1209,12 @@ contains
     type(grid_t),           intent(in)    :: gr
     type(geometry_t),       intent(in)    :: geo
 
-    type(ssys_density_t), pointer :: density
-    FLOAT                         :: fsize
+    FLOAT :: fsize
 
     PUSH_SUB(states_densities_init)
 
     if(associated(st%subsys_st))then
-      call ssys_states_start(st%subsys_st)
-      call ssys_states_get(st%subsys_st, density)
-      ASSERT(associated(density))
-      call ssys_density_get(density, st%zrho%Re)
+      call base_states_gets(st%subsys_st, "live", st%zrho%Re)
       ASSERT(associated(st%zrho%Re))
     else
       SAFE_ALLOCATE(st%zrho%Re(1:gr%fine%mesh%np_part, 1:st%d%nspin))
@@ -1415,8 +1349,7 @@ contains
     logical, optional,      intent(in)    :: exclude_wfns !< do not copy wavefunctions, densities, node
     logical, optional,      intent(in)    :: exclude_eigenval !< do not copy eigenvalues, occ, spin
 
-    type(ssys_density_t), pointer :: density
-    logical                       :: exclude_wfns_
+    logical :: exclude_wfns_
 
     PUSH_SUB(states_copy)
 
@@ -1440,38 +1373,38 @@ contains
 
     if(associated(stin%subsys_st))then
       !> Allocate and copy substates.
-      call ssys_states_new(stout%subsys_st, stin%subsys_st)
+      call base_states_new(stout%subsys_st, stin%subsys_st)
       if(exclude_wfns_)then
-        call ssys_states_init(stout%subsys_st, stin%subsys_st)
+        call base_states_init(stout%subsys_st, stin%subsys_st)
       else
-        call ssys_states_copy(stout%subsys_st, stin%subsys_st)
+        call base_states_copy(stout%subsys_st, stin%subsys_st)
       end if
     end if
 
     call loct_pointer_copy(stout%node, stin%node)
 
     if(.not. exclude_wfns_) then
-      call loct_pointer_copy(stout%ddontusepsi, stin%ddontusepsi)
-
+      
       !cmplxscl
-      call loct_pointer_copy(stout%psi%zR, stin%psi%zR)
-      stout%zdontusepsi => stout%psi%zR
+      
       if(associated(stout%subsys_st))then
-        call ssys_states_get(stout%subsys_st, density)
-        ASSERT(associated(density))
-        call ssys_density_get(density, stout%zrho%Re)
+        call base_states_gets(stout%subsys_st, "live", stout%zrho%Re)
         ASSERT(associated(stout%zrho%Re))
       else
         call loct_pointer_copy(stout%zrho%Re, stin%zrho%Re)
       end if
+      
       stout%rho => stout%zrho%Re
+
       if(stin%cmplxscl%space) then
-        call loct_pointer_copy(stout%psi%zL, stin%psi%zL)         
         call loct_pointer_copy(stout%zrho%Im, stin%zrho%Im)           
       end if
 
     end if
 
+    stout%calc_eigenval = stin%calc_eigenval
+    stout%uniform_occ = stin%uniform_occ
+    
     if(.not. optional_default(exclude_eigenval, .false.)) then
       call loct_pointer_copy(stout%zeigenval%Re, stin%zeigenval%Re)
       stout%eigenval => stout%zeigenval%Re
@@ -1483,7 +1416,6 @@ contains
     end if
 
     stout%have_left_states = stin%have_left_states
-
     
     ! the call to init_block is done at the end of this subroutine
     ! it allocates iblock, psib, block_is_local
@@ -1519,24 +1451,19 @@ contains
     call blacs_proc_grid_copy(stin%dom_st_proc_grid, stout%dom_st_proc_grid)
 #endif
 
+    call distributed_copy(stin%dist, stout%dist)
+    
     stout%scalapack_compatible = stin%scalapack_compatible
 
     stout%lnst       = stin%lnst
     stout%st_start   = stin%st_start
     stout%st_end     = stin%st_end
-    call loct_pointer_copy(stout%st_range, stin%st_range)
-    call loct_pointer_copy(stout%st_num, stin%st_num)
 
     if(stin%parallel_in_states) call multicomm_all_pairs_copy(stout%ap, stin%ap)
 
     stout%symmetrize_density = stin%symmetrize_density
 
-    if(.not. exclude_wfns_) then
-      stout%group%block_initialized = .false.
-      if(stin%group%block_initialized) then
-        call states_init_block(stout, verbose = .false.)
-      end if
-    end if
+    if(.not. exclude_wfns_) call states_group_copy(stin%group, stout%group)
 
     stout%packed = stin%packed
 
@@ -1598,7 +1525,7 @@ contains
     SAFE_DEALLOCATE_P(st%frozen_rho)
     
     !> Deallocates or nullifies pointer.
-    call ssys_states_del(st%subsys_st)
+    call base_states_del(st%subsys_st)
 
     SAFE_DEALLOCATE_P(st%occ)
     SAFE_DEALLOCATE_P(st%spin)
@@ -1606,9 +1533,10 @@ contains
 #ifdef HAVE_SCALAPACK
     call blacs_proc_grid_end(st%dom_st_proc_grid)
 #endif
+
+    call distributed_end(st%dist)
+
     SAFE_DEALLOCATE_P(st%node)
-    SAFE_DEALLOCATE_P(st%st_range)
-    SAFE_DEALLOCATE_P(st%st_num)
 
     if(st%parallel_in_states) then
       SAFE_DEALLOCATE_P(st%ap%schedule)
@@ -1721,6 +1649,35 @@ contains
   end subroutine states_generate_random
 
   ! ---------------------------------------------------------
+  subroutine substates_set_charge(this, st)
+    type(base_states_t), intent(inout) :: this
+    type(states_t),      intent(in)    :: st
+
+    type(base_density_t), pointer :: dnst
+    FLOAT                         :: chrg, qtot
+    integer                       :: ispn, ik, ierr
+
+    PUSH_SUB(substates_set_charge)
+
+    nullify(dnst)
+    call base_states_gets(this, "live", dnst)
+    ASSERT(associated(dnst))
+    qtot = M_ZERO
+    do ispn = 1, st%d%nspin
+      chrg = M_ZERO
+      do ik = 1, st%d%nik
+        if(ispn==states_dim_get_spin_index(st%d, ik))&
+          chrg = chrg + st%d%kweights(ik) * sum(st%occ(:,ik))
+      end do
+      call base_density_set(dnst, chrg, ispn)
+      qtot = qtot + chrg
+    end do
+    ASSERT(.not.abs(M_ONE-min(st%qtot,qtot)/max(st%qtot,qtot))>epsilon(qtot))
+    
+    POP_SUB(substates_set_charge)
+  end subroutine substates_set_charge
+  
+  ! ---------------------------------------------------------
   subroutine states_fermi(st, mesh)
     type(states_t), intent(inout) :: st
     type(mesh_t),   intent(in)    :: mesh
@@ -1764,8 +1721,13 @@ contains
       end if
     end if
 
+    !> Update the charge of the live subsystem.
+    if(associated(st%subsys_st)) call substates_set_charge(st%subsys_st, st)
+ 
     if(st%d%ispin == SPINORS) then
       ASSERT(states_are_complex(st))
+      
+      st%spin(:,:,:) = M_ZERO
       
       SAFE_ALLOCATE(zpsi(1:mesh%np, st%d%dim))
       do ik = st%d%kpt%start, st%d%kpt%end
@@ -1773,23 +1735,15 @@ contains
           call states_get_state(st, mesh, ist, ik, zpsi)
           st%spin(1:3, ist, ik) = state_spin(mesh, zpsi)
         end do
-#if defined(HAVE_MPI)
-        if(st%parallel_in_states) then
-          SAFE_ALLOCATE(lspin (1:st%lnst))
-          SAFE_ALLOCATE(lspin2(1:st%nst))
-          do idir = 1, 3
-            lspin = st%spin(idir, st%st_start:st%st_end, ik)
-            call lmpi_gen_allgatherv(st%lnst, lspin, tmp, lspin2, st%mpi_grp)
-            do ist = 1, st%nst
-              st%spin(idir, ist, ik) = lspin2(ist)
-            end do
-          end do
-          SAFE_DEALLOCATE_A(lspin)
-          SAFE_DEALLOCATE_A(lspin2)
-        end if
-#endif
       end do
       SAFE_DEALLOCATE_A(zpsi)
+
+#if defined(HAVE_MPI)        
+        if(st%parallel_in_states .or. st%d%kpt%parallel) then
+          call comm_allreduce(st%st_kpt_mpi_grp%comm, st%spin)
+        end if
+#endif      
+            
     end if
 
     POP_SUB(states_fermi)
@@ -1903,7 +1857,7 @@ contains
       calc_mode_par_scalapack_compat() .and. .not. st%d%kpt%parallel, st%scalapack_compatible)
     if((calc_mode_par_scalapack_compat() .and. .not. st%d%kpt%parallel) .neqv. st%scalapack_compatible) &
       call messages_experimental('Setting ScaLAPACKCompatible to other than default')
-    
+
     if(st%scalapack_compatible) then
       if(multicomm_have_slaves(mc)) &
         call messages_not_implemented("ScaLAPACK usage with task parallelization (slaves)")
@@ -1915,52 +1869,27 @@ contains
     st%scalapack_compatible = .false.
 #endif
 
-#if defined(HAVE_MPI)
     if(multicomm_strategy_is_parallel(mc, P_STRATEGY_STATES)) then
-      st%parallel_in_states = .true.
 
+#ifdef HAVE_MPI
       call multicomm_create_all_pairs(st%mpi_grp, st%ap)
-
-     if(st%nst < st%mpi_grp%size) then
-       message(1) = "Have more processors than necessary"
-       write(message(2),'(i4,a,i4,a)') st%mpi_grp%size, " processors and ", st%nst, " states."
-       call messages_fatal(2)
-     end if
-
-     SAFE_ALLOCATE(st%st_range(1:2, 0:st%mpi_grp%size-1))
-     SAFE_ALLOCATE(st%st_num(0:st%mpi_grp%size-1))
-
-     call multicomm_divide_range(st%nst, st%mpi_grp%size, st%st_range(1, :), st%st_range(2, :), &
-       lsize = st%st_num, scalapack_compat = st%scalapack_compatible)
-
-     message(1) = "Info: Parallelization in states"
-     call messages_info(1)
-
-     do inode = 0, st%mpi_grp%size - 1
-       write(message(1),'(a,i4,a,i5,a)') &
-            'Info: Nodes in states-group ', inode, ' will manage ', st%st_num(inode), ' states'
-       if(st%st_num(inode) > 0) then
-         write(message(1),'(a,a,i6,a,i6)') trim(message(1)), ':', &
-           st%st_range(1, inode), " - ", st%st_range(2, inode)
-       end if
-       call messages_info(1)
-
-       do ist = st%st_range(1, inode), st%st_range(2, inode)
-         st%node(ist) = inode
-       end do
-     end do
-
-     if(any(st%st_num(:) == 0)) then
-       message(1) = "Cannot run with empty states-groups. Select a smaller number of processors so none are idle."
-       call messages_fatal(1, only_root_writes = .true.)
-     end if
-
-     st%st_start = st%st_range(1, st%mpi_grp%rank)
-     st%st_end   = st%st_range(2, st%mpi_grp%rank)
-     st%lnst     = st%st_num(st%mpi_grp%rank)
-
-   end if
 #endif
+
+      if(st%nst < st%mpi_grp%size) then
+        message(1) = "Have more processors than necessary"
+        write(message(2),'(i4,a,i4,a)') st%mpi_grp%size, " processors and ", st%nst, " states."
+        call messages_fatal(2)
+      end if
+
+      call distributed_init(st%dist, st%nst, st%mpi_grp%comm, "states", scalapack_compat = st%scalapack_compatible)
+
+      st%st_start = st%dist%start
+      st%st_end   = st%dist%end
+      st%lnst     = st%dist%nlocal
+      st%node(1:st%nst) = st%dist%node(1:st%nst)
+      st%parallel_in_states = st%dist%parallel
+
+    end if
 
     POP_SUB(states_distribute_nodes)
   end subroutine states_distribute_nodes
@@ -1993,6 +1922,17 @@ contains
 
   end function states_are_real
 
+  ! ---------------------------------------------------------
+
+
+  pure type(type_t) function states_type(st)
+    type(states_t),    intent(in) :: st
+    
+    states_type = st%priv%wfs_type
+    
+  end function states_type
+  
+  
   ! ---------------------------------------------------------
   !
   !> This function can calculate several quantities that depend on
@@ -2287,56 +2227,6 @@ contains
   end function states_wfns_memory
 
   ! ---------------------------------------------------------
-
-  subroutine states_blacs_blocksize(st, mesh, blocksize, total_np)
-    type(states_t),  intent(in)    :: st
-    type(mesh_t),    intent(in)    :: mesh
-    integer,         intent(out)   :: blocksize(2)
-    integer,         intent(out)   :: total_np
-
-    PUSH_SUB(states_blacs_blocksize)
-
-#ifdef HAVE_SCALAPACK
-    ! We need to select the block size of the decomposition. This is
-    ! tricky, since not all processors have the same number of
-    ! points.
-    !
-    ! What we do for now is to use the maximum of the number of
-    ! points and we set to zero the remaining points.
-
-    if(.not. st%scalapack_compatible) then
-      message(1) = "Attempt to use ScaLAPACK when processes have not been distributed in compatible layout."
-      message(2) = "You need to set ScaLAPACKCompatible = yes in the input file and re-run."
-      call messages_fatal(2, only_root_writes = .true.)
-    end if
-    
-    if (mesh%parallel_in_domains) then
-      blocksize(1) = maxval(mesh%vp%np_local_vec) + (st%d%dim - 1) * &
-       maxval(mesh%vp%np_local_vec + mesh%vp%np_bndry + mesh%vp%np_ghost)
-    else
-      blocksize(1) = mesh%np + (st%d%dim - 1)*mesh%np_part
-    end if
-
-    if (st%parallel_in_states) then
-      blocksize(2) = maxval(st%st_num)
-    else
-      blocksize(2) = st%nst
-    end if
-
-    total_np = blocksize(1)*st%dom_st_proc_grid%nprow
-
-
-    ASSERT(st%d%dim*mesh%np_part >= blocksize(1))
-#else
-    blocksize(1) = 0
-    blocksize(2) = 0
-    total_np = 0
-#endif
-
-    POP_SUB(states_blacs_blocksize)
-  end subroutine states_blacs_blocksize
-
-  ! ------------------------------------------------------------
 
   subroutine states_pack(st, copy)
     type(states_t),    intent(inout) :: st
@@ -2692,135 +2582,6 @@ contains
 
     POP_SUB(occupied_states)
   end subroutine occupied_states
-
-  ! ---------------------------------------------------------
-
-  subroutine states_remote_access_start(this)
-    type(states_t),       intent(inout) :: this
-    
-    integer :: ib, iqn
-    
-    PUSH_SUB(states_remote_access_start)
-
-    ASSERT(associated(this%group%psib))
-
-    SAFE_ALLOCATE(this%group%rma_win(1:this%group%nblocks, 1:this%d%nik))
-    
-    do iqn = this%d%kpt%start, this%d%kpt%end
-      do ib = 1, this%group%nblocks
-        if(this%group%block_is_local(ib, iqn)) then
-          call batch_remote_access_start(this%group%psib(ib, iqn), this%mpi_grp, this%group%rma_win(ib, iqn))
-        else
-#ifdef HAVE_MPI2
-          ! create an empty window
-          call MPI_Win_create(0, int(0, MPI_ADDRESS_KIND), 1, &
-            MPI_INFO_NULL, this%mpi_grp%comm, this%group%rma_win(ib, iqn), mpi_err)
-#endif
-        end if
-      end do
-    end do
-    
-    POP_SUB(states_remote_access_start)
-  end subroutine states_remote_access_start
-
-    ! ---------------------------------------------------------
-
-  subroutine states_remote_access_stop(this)
-    type(states_t),       intent(inout) :: this
-    
-    integer :: ib, iqn
-    
-    PUSH_SUB(states_remote_access_stop)
-
-    ASSERT(associated(this%group%psib))
-    
-    do iqn = this%d%kpt%start, this%d%kpt%end
-      do ib = 1, this%group%nblocks
-        if(this%group%block_is_local(ib, iqn)) then
-          call batch_remote_access_stop(this%group%psib(ib, iqn), this%group%rma_win(ib, iqn))
-        else
-#ifdef HAVE_MPI2
-          call MPI_Win_free(this%group%rma_win(ib, iqn), mpi_err)
-#endif
-        end if
-      end do
-    end do
-
-    SAFE_DEALLOCATE_A(this%group%rma_win)
-    
-    POP_SUB(states_remote_access_stop)
-  end subroutine states_remote_access_stop
-
-  ! --------------------------------------
-
-  subroutine states_get_block(this, mesh, ib, iqn, psib)
-    type(states_t), target, intent(in) :: this
-    type(mesh_t),           intent(in) :: mesh
-    integer,                intent(in) :: ib
-    integer,                intent(in) :: iqn
-    type(batch_t),          pointer    :: psib
-
-    type(profile_t), save :: prof
-    
-    PUSH_SUB(states_get_block)
-
-    call profiling_in(prof, "STATES_GET_BLOCK")
-    
-    if(this%group%block_is_local(ib, iqn)) then
-      psib => this%group%psib(ib, iqn)
-    else
-      SAFE_ALLOCATE(psib)
-      call batch_init(psib, this%d%dim, this%group%block_size(ib))
-
-      if(states_are_real(this)) then
-        call dbatch_allocate(psib, this%group%block_range(ib, 1), this%group%block_range(ib, 2), mesh%np_part)
-      else
-        call zbatch_allocate(psib, this%group%block_range(ib, 1), this%group%block_range(ib, 2), mesh%np_part)
-      end if
-      
-      call batch_pack(psib, copy = .false.)
-      
-#ifdef HAVE_MPI2
-      call MPI_Win_lock(MPI_LOCK_SHARED, this%group%block_node(ib), 0, this%group%rma_win(ib, iqn),  mpi_err)
-
-      if(states_are_real(this)) then
-        call MPI_Get(psib%pack%dpsi(1, 1), product(psib%pack%size), MPI_FLOAT, &
-          this%group%block_node(ib), int(0, MPI_ADDRESS_KIND), product(psib%pack%size), MPI_FLOAT, &
-          this%group%rma_win(ib, iqn), mpi_err)
-      else
-        call MPI_Get(psib%pack%zpsi(1, 1), product(psib%pack%size), MPI_CMPLX, &
-          this%group%block_node(ib), int(0, MPI_ADDRESS_KIND), product(psib%pack%size), MPI_CMPLX, &
-          this%group%rma_win(ib, iqn), mpi_err)
-      end if
-        
-      call MPI_Win_unlock(this%group%block_node(ib), this%group%rma_win(ib, iqn),  mpi_err)
-#endif
-    end if
-
-    call profiling_out(prof)
-    
-    POP_SUB(states_get_block)
-  end subroutine states_get_block
-
-  ! --------------------------------------
-
-  subroutine states_release_block(this, ib, iqn, psib)
-    type(states_t), target, intent(in) :: this
-    integer,                intent(in) :: ib
-    integer,                intent(in) :: iqn
-    type(batch_t),          pointer    :: psib
-
-    PUSH_SUB(states_release_block)
-
-    if(this%group%block_is_local(ib, iqn)) then
-      nullify(psib)
-    else
-      call batch_end(psib)
-      SAFE_DEALLOCATE_P(psib)
-    end if
-    
-    POP_SUB(states_release_block)
-  end subroutine states_release_block
   
 #include "undef.F90"
 #include "real.F90"
@@ -2831,7 +2592,7 @@ contains
 #include "states_inc.F90"
 #include "undef.F90"
 
-end module states_m
+end module states_oct_m
 
 
 !! Local Variables:

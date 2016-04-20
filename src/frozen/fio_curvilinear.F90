@@ -1,18 +1,18 @@
 #include "global.h"
 
-module fio_curvilinear_m
+module fio_curvilinear_oct_m
 
-  use curv_briggs_m
-  use curv_gygi_m
-  use curv_modine_m
-  use curvilinear_m
-  use geometry_m
-  use global_m
-  use json_m
-  use kinds_m
-  use messages_m
-  use profiling_m
-  use simul_box_m
+  use curv_briggs_oct_m
+  use curv_gygi_oct_m
+  use curv_modine_oct_m
+  use curvilinear_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use json_oct_m
+  use kinds_oct_m
+  use messages_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
 
   implicit none
 
@@ -45,9 +45,9 @@ contains
     case(CURV_METHOD_BRIGGS)
       call curv_briggs_init(this%briggs, sb)
     case(CURV_METHOD_MODINE)
-      call json_get(config, "spacing", spcng, ierr)
+      call json_get(config, "spacing", spcng(1:sb%dim), ierr)
       ASSERT(ierr==JSON_OK)
-      if(sb%dim<MAX_DIM) spcng(sb%dim+1:) = 0.0_wp
+      if(size(spcng)>sb%dim) spcng(sb%dim+1:) = 0.0_wp
       call curv_modine_init(this%modine, sb, geo, spcng)
     end select
 
@@ -77,7 +77,7 @@ contains
     POP_SUB(fio_curvilinear_end)
   end subroutine fio_curvilinear_end
 
-end module fio_curvilinear_m
+end module fio_curvilinear_oct_m
 
 !! Local Variables:
 !! mode: f90

@@ -15,39 +15,39 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: rdmft.F90 14541 2015-09-06 15:13:42Z xavier $
+!! $Id: rdmft.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module rdmft_m
-  use density_m
-  use eigensolver_m
-  use energy_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hamiltonian_m
-  use hamiltonian_base_m
-  use lalg_adv_m
-  use lalg_basic_m
-  use loct_m
-  use loct_math_m 
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use minimizer_m
-  use output_m
-  use parser_m
-  use poisson_m
-  use profiling_m
-  use simul_box_m
-  use species_m
-  use states_m
-  use states_calc_m
-  use unit_m
-  use unit_system_m
-  use v_ks_m
-  use xc_oep_m
+module rdmft_oct_m
+  use density_oct_m
+  use eigensolver_oct_m
+  use energy_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hamiltonian_oct_m
+  use hamiltonian_base_oct_m
+  use lalg_adv_oct_m
+  use lalg_basic_oct_m
+  use loct_oct_m
+  use loct_math_oct_m 
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use minimizer_oct_m
+  use output_oct_m
+  use parser_oct_m
+  use poisson_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
+  use species_oct_m
+  use states_oct_m
+  use states_calc_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use v_ks_oct_m
+  use xc_oep_oct_m
  
   implicit none
 
@@ -90,7 +90,7 @@ contains
     
     integer :: iter, icount, ip, ist, iatom
     FLOAT :: energy, energy_dif, energy_old, energy_occ, xpos, xneg, sum_charge, rr
-    FLOAT, allocatable :: species_charge_center(:)
+    FLOAT, allocatable :: species_charge_center(:), psi(:, :)
     logical :: conv
     
     PUSH_SUB(scf_rdmft)
@@ -133,18 +133,24 @@ contains
 
     !Localize the starting orbitals so that they decay with the HOMO energy
 
-    do ip = 1, gr%mesh%np
-      call mesh_r(gr%mesh, ip, rr, species_charge_center)
-      do ist = 1, st%nst
+    SAFE_ALLOCATE(psi(1:gr%mesh%np, 1:st%d%dim))
+    
+    do ist = 1, st%nst
+      call states_get_state(st, gr%mesh, ist, 1, psi)
+      do ip = 1, gr%mesh%np
+        call mesh_r(gr%mesh, ip, rr, species_charge_center)
         if (st%eigenval(ist, 1) < M_ZERO) then
-          st%ddontusepsi(ip,1,ist,1) = st%ddontusepsi(ip,1,ist,1) * exp((-(sqrt(-M_TWO*st%eigenval(int(st%qtot*M_HALF),1))) & 
-                                + sqrt(-M_TWO*st%eigenval(ist,1)))*rr)
+          psi(ip, 1) = psi(ip, 1)&
+            *exp((-(sqrt(-M_TWO*st%eigenval(int(st%qtot*M_HALF), 1))) + sqrt(-M_TWO*st%eigenval(ist, 1)))*rr)
         else
-          st%ddontusepsi(ip,1,ist,1) = st%ddontusepsi(ip,1,ist,1) * exp(-(sqrt(-M_TWO*st%eigenval(int(st%qtot*M_HALF),1)))*rr)
+          psi(ip, 1) = psi(ip, 1)*exp(-(sqrt(-M_TWO*st%eigenval(int(st%qtot*M_HALF), 1)))*rr)
         end if
       end do
+      call states_set_state(st, gr%mesh, ist, 1, psi)
     end do
 
+    SAFE_DEALLOCATE_A(psi)
+    
     ! Orthogonalize the resulting orbitals
     call dstates_orthogonalization_full(st,gr%mesh,1)
 
@@ -661,8 +667,8 @@ contains
     FLOAT,                intent(in)    :: lambda(:, :)
     
     type(states_t)   :: psi2
-    FLOAT, allocatable :: occ(:,:)
-    integer :: ist, jst
+    FLOAT, allocatable :: occ(:,:), psii(:, :), psij(:, :)
+    integer :: ist, jst, iqn
 
     PUSH_SUB(assign_eigenfunctions)
     
@@ -671,24 +677,43 @@ contains
     occ = M_ZERO
 
     call states_copy(psi2, st)
-    if(states_are_real(st)) then
-      call dstates_rotate(gr%mesh, st, psi2, transpose(lambda))
-    else
-      call zstates_rotate(gr%mesh, st, psi2, M_z0 * transpose(lambda))
-    end if
- 
+
+    do iqn = st%d%kpt%start, st%d%kpt%end
+      if(states_are_real(st)) then
+        call states_rotate(gr%mesh, st, lambda, iqn)
+      else
+        call states_rotate(gr%mesh, st, M_z1*lambda, iqn)
+      end if
+    end do
+    
    ! reordering occupation numbers if needed
     occ = st%occ
 
+    SAFE_ALLOCATE(psii(1:gr%mesh%np, 1:st%d%dim))
+    SAFE_ALLOCATE(psij(1:gr%mesh%np, 1:st%d%dim))
+    
     do ist = 1, st%nst
-      if (abs(dmf_dotp(gr%mesh,st%ddontusepsi(:,1,ist,1),psi2%ddontusepsi(:,1,ist,1))) < M_HALF) then
-        do jst = 1, st%nst 
-          if (abs(dmf_dotp(gr%mesh,st%ddontusepsi(:,1,ist,1),psi2%ddontusepsi(:,1,jst,1))) >= M_HALF) then
-            occ(ist,1) = st%occ(jst,1)
+      call states_get_state(st, gr%mesh, ist, 1, psii)
+      call states_get_state(psi2, gr%mesh, ist, 1, psij)
+      
+      if (abs(dmf_dotp(gr%mesh, st%d%dim, psii, psij)) < M_HALF) then
+        
+        do jst = 1, st%nst
+          call states_get_state(psi2, gr%mesh, jst, 1, psij)
+          
+          if (abs(dmf_dotp(gr%mesh, st%d%dim, psii, psij)) >= M_HALF) then
+            occ(ist, 1) = st%occ(jst, 1)
           end if 
+
         end do
+        
       end if
+
     end do
+
+    SAFE_DEALLOCATE_A(psii)
+    SAFE_DEALLOCATE_A(psij)
+    
   
     call states_end(psi2) 
 
@@ -820,7 +845,7 @@ contains
 
   end subroutine rdm_derivatives
 
-end module rdmft_m
+end module rdmft_oct_m
 
 
 !! Local Variables:

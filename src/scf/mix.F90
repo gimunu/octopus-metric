@@ -15,25 +15,25 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: mix.F90 14715 2015-10-30 05:54:23Z xavier $
+!! $Id: mix.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module mix_m
-  use global_m
-  use io_m
-  use io_function_m
-  use lalg_adv_m
-  use lalg_basic_m
-  use mesh_m
-  use messages_m
-  use mpi_m
-  use parser_m
-  use profiling_m
-  use restart_m
-  use types_m
-  use unit_system_m
-  use varinfo_m
+module mix_oct_m
+  use global_oct_m
+  use io_oct_m
+  use io_function_oct_m
+  use lalg_adv_oct_m
+  use lalg_basic_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use restart_oct_m
+  use types_oct_m
+  use unit_system_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -49,11 +49,6 @@ module mix_m
     dmixing,                    &
     zmixing,                    &
     mix_coefficient
-
-  integer, parameter, public :: &
-    MIX_LINEAR  = 0,            &
-    MIX_GRPULAY = 1,            &
-    MIX_BROYDEN = 2
 
   type mix_t
     private
@@ -98,7 +93,7 @@ contains
 
     PUSH_SUB(mix_init)
 
-    def = MIX_BROYDEN
+    def = OPTION__MIXINGSCHEME__BROYDEN
     if(present(def_)) def = def_
     if(present(func_type)) then 
       smix%func_type = func_type
@@ -108,8 +103,9 @@ contains
     prefix = ""
     if(present(prefix_)) prefix = prefix_
 
-
-    !%Variable TypeOfMixing
+    call messages_obsolete_variable('TypeOfMixing', 'MixingScheme')
+    
+    !%Variable MixingScheme
     !%Type integer
     !%Default broyden
     !%Section SCF::Mixing
@@ -119,19 +115,27 @@ contains
     !% of the input and output densities of previous iterations.
     !%Option linear 0
     !% Simple linear mixing.
-    !%Option gr_pulay 1
-    !% "Guaranteed-reduction" Pulay scheme [D. R. Bowler and M. J. Gillan, <i>Chem. Phys. 
-    !% Lett.</i> <b>325</b>, 473 (2000)].
     !%Option broyden 2
     !% Broyden scheme [C. G Broyden, <i>Math. Comp.</i> <b>19</b>, 577 (1965); 
     !% D. D. Johnson, <i>Phys. Rev. B</i> <b>38</b>, 12807 (1988)].
     !% For complex functions (e.g. Sternheimer with <tt>EMEta</tt> > 0), we use the generalization
     !% with a complex dot product.
+    !%Option diis 9
+    !% Direct inversion in the iterative subspace (diis)
+    !% scheme [P. Pulay, <i>Chem. Phys. Lett.</i>, <b>73</b>, 393
+    !% (1980)] as described in [G. Kresse, and J. Hurthmueller,
+    !% <i>Phys. Rev. B</i> <b>54</b>, 11169 (1996)].
+    !%Option bowler_gillan 1
+    !% The Guaranteed-reduction modification of the Pulay scheme by
+    !% Bowler and Gillan [D. R. Bowler and M. J. Gillan,
+    !% <i>Chem. Phys.  Lett.</i> <b>325</b>, 473 (2000)].
     !%End
-    call parse_variable(trim(prefix)//'TypeOfMixing', def, smix%scheme)
-    if(.not.varinfo_valid_option('TypeOfMixing', smix%scheme)) call messages_input_error('TypeOfMixing')
-    call messages_print_var_option(stdout, "TypeOfMixing", smix%scheme)
+    call parse_variable(trim(prefix)//'MixingScheme', def, smix%scheme)
+    if(.not.varinfo_valid_option('MixingScheme', smix%scheme)) call messages_input_error('MixingScheme', 'invalid option')
+    call messages_print_var_option(stdout, "MixingScheme", smix%scheme)
 
+    if(smix%scheme == OPTION__MIXINGSCHEME__DIIS) call messages_experimental('MixingScheme = diis')
+    
     !%Variable Mixing
     !%Type float
     !%Default 0.3
@@ -140,21 +144,19 @@ contains
     !% Both the linear and the Broyden scheme depend on a "mixing parameter", set by this variable. 
     !% Must be 0 < <tt>Mixing</tt> <= 1.
     !%End
-    if (smix%scheme == MIX_LINEAR .or. smix%scheme == MIX_BROYDEN) then
-      call parse_variable(trim(prefix)+'Mixing', CNST(0.3), smix%alpha)
-      if(smix%alpha <= M_ZERO .or. smix%alpha > M_ONE) call messages_input_error('Mixing')
-    end if
-
+    call parse_variable(trim(prefix)+'Mixing', CNST(0.3), smix%alpha)
+    if(smix%alpha <= M_ZERO .or. smix%alpha > M_ONE) call messages_input_error('Mixing')
+    
     !%Variable MixNumberSteps
     !%Type integer
     !%Default 3
     !%Section SCF::Mixing
     !%Description
-    !% In the Broyden and GR-Pulay schemes, the new input density or potential is constructed
+    !% In the Broyden and Bowler_Gillan schemes, the new input density or potential is constructed
     !% from the values of the densities/potentials of a given number of previous iterations.
     !% This number is set by this variable. Must be greater than 1.
     !%End
-    if (smix%scheme == MIX_GRPULAY .or. smix%scheme == MIX_BROYDEN) then
+    if (smix%scheme /= OPTION__MIXINGSCHEME__LINEAR) then
       call parse_variable(trim(prefix)//'MixNumberSteps', 3, smix%ns)
       if(smix%ns <= 1) call messages_input_error('MixNumberSteps')
     else
@@ -177,13 +179,13 @@ contains
     smix%d2 = d2
     smix%d3 = d3
     select case (smix%scheme)
-    case (MIX_LINEAR, MIX_BROYDEN)
+    case (OPTION__MIXINGSCHEME__LINEAR, OPTION__MIXINGSCHEME__BROYDEN, OPTION__MIXINGSCHEME__DIIS)
       smix%d4 = smix%ns
-    case (MIX_GRPULAY)
+    case (OPTION__MIXINGSCHEME__BOWLER_GILLAN)
       smix%d4 = smix%ns + 1
     end select
 
-    if (smix%scheme /= MIX_LINEAR) then
+    if (smix%scheme /= OPTION__MIXINGSCHEME__LINEAR) then
       if(smix%func_type == TYPE_FLOAT) then 
         SAFE_ALLOCATE(     smix%ddf(1:d1, 1:d2, 1:d3, 1:smix%d4))
         SAFE_ALLOCATE(smix%dvin_old(1:d1, 1:d2, 1:d3))
@@ -209,7 +211,7 @@ contains
     
     PUSH_SUB(mix_clear)
 
-    if (smix%scheme /= MIX_LINEAR) then
+    if (smix%scheme /= OPTION__MIXINGSCHEME__LINEAR) then
       if(smix%func_type == TYPE_FLOAT) then 
         smix%ddf = M_ZERO
         smix%ddv = M_ZERO
@@ -237,7 +239,7 @@ contains
     PUSH_SUB(mix_end)
 
     ! Arrays got allocated for all mixing schemes, except linear mixing
-    if (smix%scheme /= MIX_LINEAR) then
+    if (smix%scheme /= OPTION__MIXINGSCHEME__LINEAR) then
       SAFE_DEALLOCATE_P(smix%ddf)
       SAFE_DEALLOCATE_P(smix%ddv)
       SAFE_DEALLOCATE_P(smix%dvin_old)
@@ -260,7 +262,7 @@ contains
 
     PUSH_SUB(mix_set_mixing)
     
-    if(smix%scheme == MIX_LINEAR) then
+    if(smix%scheme == OPTION__MIXINGSCHEME__LINEAR) then
       smix%alpha = newmixing
     else
     !  message(1) = "Mixing can only be adjusted in linear mixing scheme."
@@ -291,7 +293,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing mixing restart."
       call messages_info(1)
     end if
@@ -317,7 +319,7 @@ contains
     ! Now we write the different functions. 
     ! These are not needed when using linear mixing, so we will make sure we skip this step in that case.
     err2 = 0
-    if (smix%scheme /= MIX_LINEAR) then
+    if (smix%scheme /= OPTION__MIXINGSCHEME__LINEAR) then
       do id2 = 1, smix%d2
         do id3 = 1, smix%d3
           do id4 = 1, smix%d4
@@ -365,7 +367,7 @@ contains
       if (err2(4) /= 0) ierr = ierr + 16
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing mixing restart done."
       call messages_info(1)
     end if
@@ -398,7 +400,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading mixing restart."
       call messages_info(1)
     end if
@@ -442,7 +444,7 @@ contains
     ! Now we read the different functions.
     ! Note that we may have more or less functions than the ones needed (d4 /= smix%d4)
     if (ierr == 0) then
-      if (smix%scheme /= MIX_LINEAR) then
+      if (smix%scheme /= OPTION__MIXINGSCHEME__LINEAR) then
         err2 = 0
         do id2 = 1, smix%d2
           do id3 = 1, smix%d3
@@ -497,7 +499,7 @@ contains
       call mix_clear(smix)
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading mixing restart done."
       call messages_info(1)
     end if
@@ -522,7 +524,7 @@ contains
 
 #include "mix_inc.F90"
 
-end module mix_m
+end module mix_oct_m
 
 !! Local Variables:
 !! mode: f90

@@ -15,68 +15,68 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: hamiltonian.F90 14723 2015-10-31 19:23:40Z xavier $
+!! $Id: hamiltonian.F90 15262 2016-04-08 21:13:28Z xavier $
 
 #include "global.h"
 
-module hamiltonian_m
-  use base_hamiltonian_m
-  use batch_m
-  use batch_ops_m
-  use blas_m
-  use boundaries_m
+module hamiltonian_oct_m
+  use base_hamiltonian_oct_m
+  use base_potential_oct_m
+  use batch_oct_m
+  use batch_ops_oct_m
+  use blas_oct_m
+  use boundaries_oct_m
+  use boundary_op_oct_m
 #ifdef HAVE_OPENCL
   use cl
 #endif  
-  use cmplxscl_m
-  use comm_m
-  use derivatives_m
-  use energy_m
-  use hamiltonian_base_m
-  use epot_m
-  use gauge_field_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use hardware_m
-  use io_m
-  use io_function_m
-  use kpoints_m
-  use lalg_basic_m
-  use lasers_m
-  use math_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use mpi_lib_m
-  use opencl_m
-  use octcl_kernel_m
-  use opencl_m
-  use parser_m
-  use par_vec_m
-  use poisson_m
-  use profiling_m
-  use projector_m
-  use pcm_m
-  use restart_m
-  use scdm_m
-  use simul_box_m
-  use smear_m
-  use species_m
-  use ssys_external_m
-  use ssys_hamiltonian_m
-  use ssys_tnadd_m
-  use states_m
-  use states_dim_m
-  use types_m
-  use unit_m
-  use unit_system_m
-  use varinfo_m
-  use xc_m
-  use xc_functl_m
+  use cmplxscl_oct_m
+  use comm_oct_m
+  use derivatives_oct_m
+  use energy_oct_m
+  use hamiltonian_base_oct_m
+  use epot_oct_m
+  use gauge_field_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use hardware_oct_m
+  use io_oct_m
+  use io_function_oct_m
+  use kpoints_oct_m
+  use lalg_basic_oct_m
+  use lasers_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use mpi_lib_oct_m
+  use opencl_oct_m
+  use octcl_kernel_oct_m
+  use oct_exchange_oct_m
+  use opencl_oct_m
+  use parser_oct_m
+  use par_vec_oct_m
+  use poisson_oct_m
+  use profiling_oct_m
+  use projector_oct_m
+  use pcm_oct_m
+  use restart_oct_m
+  use scdm_oct_m
+  use simul_box_oct_m
+  use smear_oct_m
+  use species_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use states_parallel_oct_m
+  use types_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use varinfo_oct_m
+  use xc_oct_m
+  use xc_functl_oct_m
   use XC_F90(lib_m)
-  use loct_math_m
 
   implicit none
 
@@ -101,10 +101,6 @@ module hamiltonian_m
     hamiltonian_inh_term,            &
     hamiltonian_set_inh,             &
     hamiltonian_remove_inh,          &
-    hamiltonian_oct_exchange,        &
-    hamiltonian_prepare_oct_exchange,&
-    hamiltonian_set_oct_exchange,    &
-    hamiltonian_remove_oct_exchange, &
     hamiltonian_adjoint,             &
     hamiltonian_not_adjoint,         &
     hamiltonian_hermitian,           &
@@ -112,10 +108,10 @@ module hamiltonian_m
     hamiltonian_update,              &
     hamiltonian_get_time,            &
     hamiltonian_apply_packed,        &
-    dexchange_operator,              &
-    zexchange_operator,              &
-    dscdm_exchange_operator,              &
-    zscdm_exchange_operator,              &
+    dexchange_operator_single,       &
+    zexchange_operator_single,       &
+    dscdm_exchange_operator,         &
+    zscdm_exchange_operator,         &
     dhamiltonian_phase,              &
     zhamiltonian_phase,              &
     zhamiltonian_dervexternal,       &
@@ -131,7 +127,7 @@ module hamiltonian_m
     type(hamiltonian_base_t) :: hm_base
     type(energy_t), pointer  :: energy
     type(base_hamiltonian_t), pointer :: subsys_hm    !< Subsystems Hamiltonian.
-!    type(bc_t)               :: bc      !< boundaries
+    type(bc_t)               :: bc      !< boundaries
     FLOAT, pointer :: vhartree(:) !< Hartree potential
     FLOAT, pointer :: vxc(:,:)    !< XC potential
     FLOAT, pointer :: vhxc(:,:)   !< XC potential + Hartree potential + Berry potential
@@ -160,10 +156,6 @@ module hamiltonian_m
  
     !> absorbing boundaries
     logical :: adjoint
-    integer  :: ab                !< do we have absorbing boundaries?
-    FLOAT :: ab_width             !< width of the absorbing boundary
-    FLOAT :: ab_height            !< height of the absorbing boundary
-    FLOAT, pointer :: ab_pot(:)   !< where we store the ab potential
 
     !> Spectral range
     FLOAT :: spectral_middle_point
@@ -185,11 +177,7 @@ module hamiltonian_m
 
     !> There may also be a exchange-like term, similar to the one necessary for time-dependent
     !! Hartree Fock, also useful only for the OCT equations
-    logical :: oct_exchange
-    type(states_t), pointer :: oct_st
-    FLOAT, pointer :: oct_fxc(:, :, :)
-    FLOAT, pointer :: oct_pot(:, :)
-    FLOAT, pointer :: oct_rho(:, :)
+    type(oct_exchange_t) :: oct_exchange
 
     CMPLX, pointer :: phase(:, :)
     type(opencl_mem_t) :: buff_phase
@@ -205,17 +193,13 @@ module hamiltonian_m
     !> For the Rashba spin-orbit coupling
     FLOAT :: rashba_coupling
     type(scdm_t)  :: scdm
+
+    logical :: time_zero
   end type hamiltonian_t
 
   integer, public, parameter :: &
     LENGTH     = 1,             &
     VELOCITY   = 2
-
-  integer, public, parameter :: &
-    NOT_ABSORBING       = 0,    &
-    IMAGINARY_ABSORBING = 1,    &
-    MASK_ABSORBING      = 2,    &
-    EXACT_ABSORBING     = 3
 
   integer, public, parameter ::        &
     INDEPENDENT_PARTICLES = 2, &
@@ -226,7 +210,7 @@ module hamiltonian_m
     RDMFT                 = 7
 
   type(profile_t), save :: prof_hamiltonian, prof_kinetic_start, prof_kinetic_finish
-  type(profile_t), save :: prof_exx, prof_exx_scdm
+  type(profile_t), save :: prof_exx_scdm, prof_exx
 
 contains
 
@@ -292,11 +276,8 @@ contains
     SAFE_ALLOCATE(hm%energy)
     call energy_nullify(hm%energy)
 
-    ! initialize variables
-    nullify(hm%oct_fxc)
-    nullify(hm%oct_pot)
-    nullify(hm%oct_rho)
-
+    call oct_exchange_nullify(hm%oct_exchange)
+    
     !cmplxscl: copy cmplxscl initialized in states.F90
     call cmplxscl_copy(st%cmplxscl, hm%cmplxscl)
 
@@ -304,7 +285,7 @@ contains
     if(present(subsys_hm))then
       ! Set Subsystems Hamiltonian pointer.
       ASSERT(.not.hm%cmplxscl%space)
-      hm%subsys_hm=>subsys_hm
+      hm%subsys_hm => subsys_hm
     end if
 
     ! allocate potentials and density of the cores
@@ -316,7 +297,7 @@ contains
     nullify(hm%vhartree, hm%vxc, hm%vtau, hm%axc)
     if(hm%theory_level /= INDEPENDENT_PARTICLES) then
 
-      SAFE_ALLOCATE(hm%vhartree(1:gr%mesh%np))
+      SAFE_ALLOCATE(hm%vhartree(1:gr%mesh%np_part))
       hm%vhartree=M_ZERO
 
       SAFE_ALLOCATE(hm%vxc(1:gr%mesh%np, 1:hm%d%nspin))
@@ -407,31 +388,8 @@ contains
       nullify(hm%a_ind, hm%b_ind)
     end if
 
-    !%Variable AbsorbingBoundaries
-    !%Type integer
-    !%Default not_absorbing
-    !%Section Time-Dependent::Absorbing Boundaries
-    !%Description
-    !% To improve the quality of the spectra by avoiding the formation of
-    !% standing density waves, one can make the boundaries of the simulation
-    !% box absorbing.
-    !%Option not_absorbing 0
-    !% No absorbing boundaries.
-    !%Option sin2 1
-    !% A <math>\sin^2</math> imaginary potential is added at the boundaries.
-    !%Option mask 2
-    !% A mask is applied to the wavefunctions at the boundaries.
-    !%End
-    call parse_variable('AbsorbingBoundaries', NOT_ABSORBING, hm%ab)
-    if(.not.varinfo_valid_option('AbsorbingBoundaries', hm%ab)) call messages_input_error('AbsorbingBoundaries')
-    call messages_print_var_option(stdout, "AbsorbingBoundaries", hm%ab)
-
-    nullify(hm%ab_pot)
-
-    if(hm%ab /= NOT_ABSORBING) call init_abs_boundaries()
-
-!    ! boundaries
-!    call bc_init(hm%bc, gr%mesh, gr%mesh%sb, hm%geo)
+    ! Boundaries
+    call bc_init(hm%bc, gr%mesh, gr%mesh%sb, hm%geo)
 
     !%Variable MassScaling
     !%Type block
@@ -465,7 +423,7 @@ contains
     nullify(hm%hf_st)
 
     hm%inh_term = .false.
-    call hamiltonian_remove_oct_exchange(hm)
+    call oct_exchange_remove(hm%oct_exchange)
 
     hm%adjoint = .false.
 
@@ -516,7 +474,20 @@ contains
       call messages_fatal()
 #endif
     end if
-        
+
+    !%Variable TimeZero
+    !%Type logical
+    !%Default no
+    !%Section Hamiltonian
+    !%Description
+    !% (Experimental) If set to yes, the ground state and other time
+    !% dependent calculation will assume that they are done at time
+    !% zero, so that all time depedent field at that time will be
+    !% included.
+    !%End
+    call parse_variable('TimeZero', .false., hm%time_zero)
+    if(hm%time_zero) call messages_experimental('TimeZero')
+
     call profiling_out(prof)
     POP_SUB(hamiltonian_init)
 
@@ -548,48 +519,6 @@ contains
 
       POP_SUB(hamiltonian_init.init_phase)
     end subroutine init_phase
-
-
-    ! ---------------------------------------------------------
-    subroutine init_abs_boundaries()
-      FLOAT :: dd
-      integer :: ip
-
-      PUSH_SUB(hamiltonian_init.init_abs_boundaries)
-
-      !%Variable ABWidth
-      !%Type float
-      !%Default 0.4 a.u.
-      !%Section Time-Dependent::Absorbing Boundaries
-      !%Description
-      !% Width of the region used to apply the absorbing boundaries.
-      !%End
-      call parse_variable('ABWidth', CNST(0.4), hm%ab_width, units_inp%length)
-
-      if(hm%ab == 1) then
-        !%Variable ABHeight
-        !%Type float
-        !%Default -0.2 a.u.
-        !%Section Time-Dependent::Absorbing Boundaries
-        !%Description
-        !% When <tt>AbsorbingBoundaries = sin2</tt>, this is the height of the imaginary potential.
-        !%End
-        call parse_variable('ABHeight', -CNST(0.2), hm%ab_height, units_inp%energy)
-      else
-        hm%ab_height = M_ONE
-      end if
-
-      ! generate boundary potential...
-      SAFE_ALLOCATE(hm%ab_pot(1:gr%mesh%np))
-      hm%ab_pot = M_ZERO
-      do ip = 1, gr%mesh%np
-        if(mesh_inborder(gr%mesh, hm%geo, ip, dd, hm%ab_width)) then
-          hm%ab_pot(ip) = hm%ab_height * sin(dd * M_PI / (M_TWO * hm%ab_width))**2
-        end if
-      end do
-
-      POP_SUB(hamiltonian_init.init_abs_boundaries)
-    end subroutine init_abs_boundaries
 
   end subroutine hamiltonian_init
 
@@ -631,13 +560,13 @@ contains
     call epot_end(hm%ep, hm%geo)
     nullify(hm%geo)
 
-    SAFE_DEALLOCATE_P(hm%ab_pot)
+    call bc_end(hm%bc)
 
     call states_dim_end(hm%d) 
 
     ! this is a bit ugly, hf_st is initialized in v_ks_calc but deallocated here.
     if(associated(hm%hf_st))  then
-      if(hm%hf_st%parallel_in_states) call states_remote_access_stop(hm%hf_st)
+      if(hm%hf_st%parallel_in_states) call states_parallel_remote_access_stop(hm%hf_st)
       call states_end(hm%hf_st)
       SAFE_DEALLOCATE_P(hm%hf_st)
     end if
@@ -656,8 +585,8 @@ contains
     type(hamiltonian_t), intent(in) :: hm
 
     PUSH_SUB(hamiltonian_hermitian)
-    hamiltonian_hermitian = .not.((hm%ab  ==  IMAGINARY_ABSORBING) .or. &
-                                  hamiltonian_oct_exchange(hm)     .or. &
+    hamiltonian_hermitian = .not.((hm%bc%abtype == IMAGINARY_ABSORBING) .or. &
+                                  oct_exchange_enabled(hm%oct_exchange)     .or. &
                                   hm%cmplxscl%space)
 
     POP_SUB(hamiltonian_hermitian)
@@ -715,121 +644,6 @@ contains
     POP_SUB(hamiltonian_remove_inh)
   end subroutine hamiltonian_remove_inh
 
-
-  ! ---------------------------------------------------------
-  logical function hamiltonian_oct_exchange(hm) result(oct_exchange)
-    type(hamiltonian_t), intent(in) :: hm
-
-    PUSH_SUB(hamiltonian_oct_exchange)
-    oct_exchange = hm%oct_exchange
-
-    POP_SUB(hamiltonian_oct_exchange)
-  end function hamiltonian_oct_exchange
-
-
-
-  ! ---------------------------------------------------------
-  subroutine hamiltonian_set_oct_exchange(hm, st, mesh)
-    type(hamiltonian_t), intent(inout) :: hm
-    type(states_t), target, intent(in) :: st
-    type(mesh_t),        intent(in)    :: mesh
-
-    integer :: np, nspin
-
-    PUSH_SUB(hamiltonian_set_oct_exchange)
-
-    ! In this release, no non-local part for the QOCT Hamiltonian.
-    nullify(hm%oct_st)
-
-    hm%oct_st => st
-    hm%oct_exchange = .true.
-    np = mesh%np
-    nspin = hm%oct_st%d%nspin
-
-    SAFE_ALLOCATE(hm%oct_fxc(1:np, 1:nspin, 1:nspin))
-    SAFE_ALLOCATE(hm%oct_pot(1:np, 1:nspin))
-    SAFE_ALLOCATE(hm%oct_rho(1:np, 1:nspin))
-
-    hm%oct_fxc = M_ZERO
-    hm%oct_pot = M_ZERO
-    hm%oct_rho = M_ZERO
-
-    POP_SUB(hamiltonian_set_oct_exchange)
-  end subroutine hamiltonian_set_oct_exchange
-
-
-  ! ---------------------------------------------------------
-  subroutine hamiltonian_prepare_oct_exchange(hm, mesh, psi, xc)
-    type(hamiltonian_t), intent(inout) :: hm
-    type(mesh_t),        intent(in)    :: mesh
-    CMPLX,               intent(in)    :: psi(:, :, :, :)
-    type(xc_t),          intent(in)    :: xc
-
-    integer :: jst, ip, ik
-    CMPLX, allocatable :: psi2(:, :)
-
-    PUSH_SUB(hamiltonian_prepare_oct_exchange)
-
-    SAFE_ALLOCATE(psi2(1:mesh%np, 1:hm%d%dim))
-
-    select case(hm%d%ispin)
-    case(UNPOLARIZED)
-      ASSERT(hm%d%nik  ==  1)
-
-      hm%oct_pot = M_ZERO
-      hm%oct_rho = M_ZERO
-      do jst = 1, hm%oct_st%nst
-        call states_get_state(hm%oct_st, mesh, jst, 1, psi2)
-        forall (ip = 1:mesh%np)
-          hm%oct_rho(ip, 1) = hm%oct_rho(ip, 1) + hm%oct_st%occ(jst, 1)*aimag(conjg(psi2(ip, 1))*psi(ip, 1, jst, 1))
-        end forall
-      end do
-      call dpoisson_solve(psolver, hm%oct_pot(:, 1), hm%oct_rho(:, 1), all_nodes = .false.)
-
-    case(SPIN_POLARIZED)
-      ASSERT(hm%d%nik  ==  2)
-
-      hm%oct_pot = M_ZERO
-      hm%oct_rho = M_ZERO
-      do ik = 1, 2
-        do jst = 1, hm%oct_st%nst
-          call states_get_state(hm%oct_st, mesh, jst, ik, psi2)
-          forall (ip = 1:mesh%np)
-            hm%oct_rho(ip, ik) = hm%oct_rho(ip, ik) + hm%oct_st%occ(jst, ik) * aimag(conjg(psi2(ip, 1))*psi(ip, 1, jst, ik))
-          end forall
-        end do
-      end do
-
-      do ik = 1, 2
-        call dpoisson_solve(psolver, hm%oct_pot(:, ik), hm%oct_rho(:, ik), all_nodes = .false.)
-      end do
-
-    end select
-
-    hm%oct_fxc = M_ZERO
-    call xc_get_fxc(xc, mesh, hm%oct_st%rho, hm%oct_st%d%ispin, hm%oct_fxc)
-
-    SAFE_DEALLOCATE_A(psi2)
-    POP_SUB(hamiltonian_prepare_oct_exchange)
-  end subroutine hamiltonian_prepare_oct_exchange
-
-
-  ! ---------------------------------------------------------
-  subroutine hamiltonian_remove_oct_exchange(hm)
-    type(hamiltonian_t), intent(inout) :: hm
-
-    PUSH_SUB(hamiltonian_remove_oct_exchange)
-
-    nullify(hm%oct_st)
-    hm%oct_exchange = .false.
-    SAFE_DEALLOCATE_P(hm%oct_fxc)
-    SAFE_DEALLOCATE_P(hm%oct_pot)
-    SAFE_DEALLOCATE_P(hm%oct_rho)
-
-    POP_SUB(hamiltonian_remove_oct_exchange)
-  end subroutine hamiltonian_remove_oct_exchange
-
-
   ! ---------------------------------------------------------
   subroutine hamiltonian_adjoint(hm)
     type(hamiltonian_t), intent(inout) :: hm
@@ -838,8 +652,8 @@ contains
 
     if(.not.hm%adjoint) then
       hm%adjoint = .true.
-      if(hm%ab  ==  IMAGINARY_ABSORBING) then
-        hm%ab_pot = -hm%ab_pot
+      if(hm%bc%abtype == IMAGINARY_ABSORBING) then
+        hm%bc%mf = -hm%bc%mf
       end if
     end if
 
@@ -855,8 +669,8 @@ contains
 
     if(hm%adjoint) then
       hm%adjoint = .false.
-      if(hm%ab  ==  IMAGINARY_ABSORBING) then
-        hm%ab_pot = -hm%ab_pot
+      if(hm%bc%abtype == IMAGINARY_ABSORBING) then
+        hm%bc%mf = -hm%bc%mf
       end if
     end if
 
@@ -873,9 +687,7 @@ contains
 
     integer :: ispin, ip, idir, iatom, ilaser
     type(profile_t), save :: prof, prof_phases
-    type(ssys_tnadd_t),    pointer :: subsys_tnadd
-    FLOAT, dimension(:,:), pointer :: potential
-    FLOAT :: aa(1:MAX_DIM)
+    FLOAT :: aa(1:MAX_DIM), time_
     FLOAT, allocatable :: vp(:,:)
 
     PUSH_SUB(hamiltonian_update)
@@ -886,11 +698,19 @@ contains
     if(present(time)) this%current_time = time
     if(present(Imtime)) this%Imcurrent_time = Imtime !cmplxscl
 
+    time_ = optional_default(time, CNST(0.0))
+
     ! set everything to zero
     call hamiltonian_base_clear(this%hm_base)
 
     ! the xc, hartree and external potentials
-    call hamiltonian_base_allocate(this%hm_base, mesh, FIELD_POTENTIAL, this%cmplxscl%space)
+    call hamiltonian_base_allocate(this%hm_base, mesh, FIELD_POTENTIAL, &
+      complex_potential = this%cmplxscl%space .or. this%bc%abtype == IMAGINARY_ABSORBING)
+
+    if(this%d%nspin > 2 .and. this%bc%abtype == IMAGINARY_ABSORBING) then
+      call messages_not_implemented('AbsorbingBoundaries = cap for spinors')
+    end if
+
     do ispin = 1, this%d%nspin
       if(ispin <= 2) then
         forall (ip = 1:mesh%np) this%hm_base%potential(ip, ispin) = this%vhxc(ip, ispin) + this%ep%vpsl(ip)
@@ -898,41 +718,36 @@ contains
         if (this%pcm%run_pcm) then
           forall (ip = 1:mesh%np)  
             this%hm_base%potential(ip, ispin) = this%hm_base%potential(ip, ispin) + &
-                 this%pcm%v_e_rs(ip) + this%pcm%v_n_rs(ip)
+              this%pcm%v_e_rs(ip) + this%pcm%v_n_rs(ip)
           end forall
         end if
 
         if(this%cmplxscl%space) then
-          forall (ip = 1:mesh%np) this%hm_base%Impotential(ip, ispin) = this%Imvhxc(ip, ispin) +  this%ep%Imvpsl(ip)
+          forall (ip = 1:mesh%np)
+            this%hm_base%Impotential(ip, ispin) = &
+              this%hm_base%Impotential(ip, ispin) + this%Imvhxc(ip, ispin) +  this%ep%Imvpsl(ip)
+          end forall
         end if
       else
         forall (ip = 1:mesh%np) this%hm_base%potential(ip, ispin) = this%vhxc(ip, ispin)
       end if
+
+      if(this%bc%abtype == IMAGINARY_ABSORBING) then
+        forall (ip = 1:mesh%np)
+          this%hm_base%Impotential(ip, ispin) = this%hm_base%Impotential(ip, ispin) + this%bc%mf(ip)
+        end forall
+      end if
+
     end do
 
-    ! Add subsystem kinetic non-additive term
-    nullify(subsys_tnadd, potential)
-    if(associated(this%subsys_hm))then
-      call ssys_hamiltonian_get(this%subsys_hm, subsys_tnadd)
-      ASSERT(associated(subsys_tnadd))
-      call ssys_tnadd_get(subsys_tnadd, potential)
-      ASSERT(associated(potential))
-      do ispin = 1, this%d%nspin
-        forall (ip = 1:mesh%np) 
-          this%hm_base%potential(ip,ispin) = this%hm_base%potential(ip,ispin) + potential(ip,ispin)
-        end forall
-      end do
-      nullify(subsys_tnadd, potential)
-    end if
- 
     ! the lasers
-    if (present(time)) then
+    if (present(time) .or. this%time_zero) then
 
       do ilaser = 1, this%ep%no_lasers
         select case(laser_kind(this%ep%lasers(ilaser)))
         case(E_FIELD_SCALAR_POTENTIAL, E_FIELD_ELECTRIC)
           do ispin = 1, this%d%spin_channels
-            call laser_potential(this%ep%lasers(ilaser), mesh,  this%hm_base%potential(:, ispin), time)
+            call laser_potential(this%ep%lasers(ilaser), mesh,  this%hm_base%potential(:, ispin), time_)
           end do
         case(E_FIELD_MAGNETIC)
           call hamiltonian_base_allocate(this%hm_base, mesh, FIELD_VECTOR_POTENTIAL + FIELD_UNIFORM_MAGNETIC_FIELD, &
@@ -940,40 +755,38 @@ contains
           ! get the vector potential
           SAFE_ALLOCATE(vp(1:mesh%np, 1:mesh%sb%dim))
           vp(1:mesh%np, 1:mesh%sb%dim) = M_ZERO
-          call laser_vector_potential(this%ep%lasers(ilaser), mesh, vp, time)
+          call laser_vector_potential(this%ep%lasers(ilaser), mesh, vp, time_)
           forall (idir = 1:mesh%sb%dim, ip = 1:mesh%np)
             this%hm_base%vector_potential(idir, ip) = this%hm_base%vector_potential(idir, ip) - vp(ip, idir)/P_C
           end forall
           ! and the magnetic field
-          call laser_field(this%ep%lasers(ilaser), this%hm_base%uniform_magnetic_field(1:mesh%sb%dim), time)
+          call laser_field(this%ep%lasers(ilaser), this%hm_base%uniform_magnetic_field(1:mesh%sb%dim), time_)
           SAFE_DEALLOCATE_A(vp)
         case(E_FIELD_VECTOR_POTENTIAL)
           call hamiltonian_base_allocate(this%hm_base, mesh, FIELD_UNIFORM_VECTOR_POTENTIAL, this%cmplxscl%space)
           ! get the uniform vector potential associated with a magnetic field
           aa = M_ZERO
-          call laser_field(this%ep%lasers(ilaser), aa(1:mesh%sb%dim), time)
+          call laser_field(this%ep%lasers(ilaser), aa(1:mesh%sb%dim), time_)
           this%hm_base%uniform_vector_potential(1:mesh%sb%dim) = this%hm_base%uniform_vector_potential(1:mesh%sb%dim) &
             - aa(1:mesh%sb%dim)/P_C
         end select
       end do
 
+      ! the gauge field
+      if(gauge_field_is_applied(this%ep%gfield)) then
+        call hamiltonian_base_allocate(this%hm_base, mesh, FIELD_UNIFORM_VECTOR_POTENTIAL, this%cmplxscl%space)
+        call gauge_field_get_vec_pot(this%ep%gfield, this%hm_base%uniform_vector_potential)
+        this%hm_base%uniform_vector_potential(1:mesh%sb%dim) = this%hm_base%uniform_vector_potential(1:mesh%sb%dim)/P_c
+      end if
+
+      ! the electric field for a periodic system through the gauge field
+      if(associated(this%ep%e_field) .and. gauge_field_is_applied(this%ep%gfield)) then
+        this%hm_base%uniform_vector_potential(1:mesh%sb%periodic_dim) = &
+          this%hm_base%uniform_vector_potential(1:mesh%sb%periodic_dim) - time_*this%ep%e_field(1:mesh%sb%periodic_dim)
+      end if
+      
     end if
 
-    ! the gauge field
-    if(gauge_field_is_applied(this%ep%gfield)) then
-      call hamiltonian_base_allocate(this%hm_base, mesh, FIELD_UNIFORM_VECTOR_POTENTIAL, this%cmplxscl%space)
-      call gauge_field_get_vec_pot(this%ep%gfield, this%hm_base%uniform_vector_potential)
-      this%hm_base%uniform_vector_potential(1:mesh%sb%dim) = this%hm_base%uniform_vector_potential(1:mesh%sb%dim)/P_c
-    end if
-    
-    ! the electric field for a periodic system through the gauge field
-    if(associated(this%ep%e_field) .and. gauge_field_is_applied(this%ep%gfield)) then
-      if(present(time)) then
-        this%hm_base%uniform_vector_potential(1:mesh%sb%periodic_dim) = &
-          this%hm_base%uniform_vector_potential(1:mesh%sb%periodic_dim) - time*this%ep%e_field(1:mesh%sb%periodic_dim)
-      end if
-    end if
-    
     ! the vector potential of a static magnetic field
     if(associated(this%ep%a_static)) then
       call hamiltonian_base_allocate(this%hm_base, mesh, FIELD_VECTOR_POTENTIAL, this%cmplxscl%space)
@@ -1103,9 +916,7 @@ contains
     if (this%pcm%run_pcm) then
      !> Generates the real-space PCM potential due to nuclei which do not change
      !! during the SCF calculation.
-     call v_nuclei_cav(this%pcm%v_n, geo, this%pcm%tess, this%pcm%n_tesserae)
-     call pcm_charges(this%pcm%q_n, this%pcm%qtot_n, this%pcm%v_n, this%pcm%matrix, this%pcm%n_tesserae)
-     call pcm_pot_rs( this%pcm%v_n_rs, this%pcm%q_n, this%pcm%tess, this%pcm%n_tesserae, gr%mesh, this%pcm%gaussian_width )
+     call pcm_calc_pot_rs(this%pcm, gr%mesh, geo = geo)
     end if
 
     POP_SUB(hamiltonian_epot_generate)
@@ -1129,11 +940,10 @@ contains
     if(mesh%use_curvilinear) apply = .false.
     if(hamiltonian_base_has_magnetic(this%hm_base)) apply = .false.
     if(this%rashba_coupling**2 > M_ZERO) apply = .false.
-    if(this%ab  ==  IMAGINARY_ABSORBING) apply = .false.
-    if(this%theory_level == HARTREE .or. this%theory_level == HARTREE_FOCK .or. this%theory_level == RDMFT) apply = .false.
-    if(iand(this%xc_family, XC_FAMILY_MGGA + XC_FAMILY_HYB_MGGA) /= 0)  apply = .false.
     if(this%ep%non_local .and. .not. this%hm_base%apply_projector_matrices) apply = .false.
-
+    if(iand(this%xc_family, XC_FAMILY_MGGA + XC_FAMILY_HYB_MGGA) /= 0)  apply = .false. 
+    if(this%bc%abtype == IMAGINARY_ABSORBING .and. opencl_is_enabled()) apply = .false.
+    
   end function hamiltonian_apply_packed
 
   ! -----------------------------------------------------------------
@@ -1251,7 +1061,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing Vhxc restart."
       call messages_info(1)
     end if
@@ -1325,7 +1135,7 @@ contains
 
     call restart_close(restart, iunit)
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Writing Vhxc restart done."
       call messages_info(1)
     end if
@@ -1355,7 +1165,7 @@ contains
       return
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading Vhxc restart."
       call messages_info(1)
     end if
@@ -1412,7 +1222,7 @@ contains
       SAFE_DEALLOCATE_A(zv)
     end if
 
-    if (in_debug_mode) then
+    if (debug%info) then
       message(1) = "Debug: Reading Vhxc restart done."
       call messages_info(1)
     end if
@@ -1430,7 +1240,7 @@ contains
 #include "complex.F90"
 #include "hamiltonian_inc.F90"
 
-end module hamiltonian_m
+end module hamiltonian_oct_m
 
 !! Local Variables:
 !! mode: f90

@@ -15,48 +15,47 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: density.F90 14726 2015-11-01 13:01:15Z jrfsousa $
+!! $Id: density.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module density_m
-  use blas_m
-  use batch_m
-  use batch_ops_m
+module density_oct_m
+  use base_states_oct_m
+  use blas_oct_m
+  use batch_oct_m
+  use batch_ops_oct_m
   use iso_c_binding
 #ifdef HAVE_OPENCL
   use cl
 #endif
-  use comm_m
-  use derivatives_m
-  use global_m
-  use grid_m
-  use io_m
-  use kpoints_m
-  use loct_m
-  use math_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use multigrid_m
-  use multicomm_m
-  use mpi_m ! if not before parser_m, ifort 11.072 can`t compile with MPI2
-  use mpi_lib_m
-  use opencl_m
-  use octcl_kernel_m
-  use profiling_m
-  use simul_box_m
-  use smear_m
-  use states_m
-  use states_dim_m
-  use ssys_density_m
-  use ssys_states_m
-  use symmetrizer_m
-  use types_m
-  use unit_m
-  use unit_system_m
-  use utils_m
-  use varinfo_m
+  use comm_oct_m
+  use derivatives_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use io_oct_m
+  use kpoints_oct_m
+  use loct_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use multigrid_oct_m
+  use multicomm_oct_m
+  use mpi_oct_m ! if not before parser_m, ifort 11.072 can`t compile with MPI2
+  use mpi_lib_oct_m
+  use opencl_oct_m
+  use octcl_kernel_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
+  use smear_oct_m
+  use states_oct_m
+  use states_dim_oct_m
+  use symmetrizer_oct_m
+  use types_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use utils_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -76,10 +75,8 @@ module density_m
   type density_calc_t
     FLOAT,                pointer :: density(:, :)
     FLOAT,                pointer :: Imdensity(:, :)
-    FLOAT,                pointer :: total_density(:, :)
     type(states_t),       pointer :: st
     type(grid_t),         pointer :: gr
-    type(ssys_density_t), pointer :: subsys_density
     type(opencl_mem_t)            :: buff_density
     integer                       :: pnp
     logical                       :: packed
@@ -94,26 +91,12 @@ contains
     FLOAT,                target,   intent(out)   :: density(:, :)
     FLOAT, optional,      target,   intent(out)   :: Imdensity(:, :)
 
-    type(ssys_density_t), pointer :: live_density
-
     PUSH_SUB(density_calc_init)
 
     this%st => st
     this%gr => gr
-    nullify(this%density, this%Imdensity, this%total_density, this%subsys_density, live_density)
-    if(associated(this%st%subsys_st))then
-      !> Set the pointers to the total and live densities.
-      ASSERT(.not.present(Imdensity))
-      this%total_density => density
-      call ssys_states_get(this%st%subsys_st, this%subsys_density)
-      ASSERT(associated(this%subsys_density))
-      !call ssys_density_get(this%subsys_density, "live", live_density)
-      ASSERT(associated(live_density))
-      call ssys_density_get(live_density, this%density)
-      ASSERT(associated(this%density))
-    else
-      this%density => density
-    end if
+
+    this%density => density
     this%density = M_ZERO
 
     if(present(Imdensity)) then
@@ -341,10 +324,7 @@ contains
 
     type(symmetrizer_t) :: symmetrizer
     FLOAT, allocatable :: tmpdensity(:)
-    type(ssys_density_iterator_t)   :: iter
-    type(ssys_density_t),   pointer :: ssys_density
-    FLOAT,  dimension(:,:), pointer :: pdensity
-    integer :: ispin, ip, ierr
+    integer :: ispin, ip
     type(profile_t), save :: reduce_prof
 #ifdef HAVE_OPENCL
     FLOAT, allocatable :: fdensity(:)
@@ -395,28 +375,6 @@ contains
 
       call symmetrizer_end(symmetrizer)
       SAFE_DEALLOCATE_A(tmpdensity)
-    end if
-
-    nullify(ssys_density, pdensity)
-    if(associated(this%subsys_density))then
-      !> Calculate the total density.
-      this%total_density=M_ZERO
-      call ssys_density_init(iter, this%subsys_density)
-      do
-        nullify(ssys_density, pdensity)
-        call ssys_density_next(iter, ssys_density, ierr)
-        if(ierr/=SSYS_DENSITY_OK)exit
-        ASSERT(associated(ssys_density))
-        call ssys_density_get(ssys_density, pdensity)
-        ASSERT(associated(pdensity))
-        do ispin = 1, this%st%d%nspin
-          forall(ip=1:this%gr%fine%mesh%np)
-            this%total_density(ip,ispin)=this%total_density(ip,ispin)+pdensity(ip,ispin)
-          end forall
-        end do
-      end do
-      call ssys_density_end(iter)
-      nullify(ssys_density, pdensity)
     end if
 
     POP_SUB(density_calc_end)
@@ -536,6 +494,8 @@ contains
     call states_distribute_nodes(st, mc)
     call states_allocate_wfns(st, gr%mesh, TYPE_CMPLX)
 
+    SAFE_ALLOCATE(psi(1:gr%mesh%np, 1:st%d%dim, 1))
+    
 #if defined(HAVE_MPI) 
 
     if(staux%parallel_in_states) then
@@ -543,13 +503,21 @@ contains
         do ist = staux%st_start, staux%st_end
           if(ist <= n) cycle
           if(.not.state_is_local(st, ist-n)) then
-            call MPI_Send(staux%zdontusepsi(1, 1, ist, ik), gr%mesh%np_part*st%d%dim, MPI_CMPLX, staux%node(ist), &
-              ist, st%mpi_grp%comm, mpi_err)
 
-            call MPI_Recv(st%zdontusepsi(1, 1, ist-n, ik), gr%mesh%np_part*st%d%dim, MPI_CMPLX, st%node(ist-n), &
+            call states_get_state(staux, gr%mesh, ist, ik, psi(:, :, 1))
+
+            ! I think this can cause a deadlock. XA
+            call MPI_Send(psi(1, 1, 1), gr%mesh%np_part*st%d%dim, MPI_CMPLX, staux%node(ist), ist, &
+              st%mpi_grp%comm, mpi_err)
+
+            call MPI_Recv(psi(1, 1, 1), gr%mesh%np_part*st%d%dim, MPI_CMPLX, st%node(ist - n), &
               ist, st%mpi_grp%comm, status, mpi_err)
+
+            call states_set_state(st, gr%mesh, ist - n, ik, psi(:, :, 1))
+            
           else
-            st%zdontusepsi(:, :, ist-n, ik) = staux%zdontusepsi(:, :, ist, ik)
+            call states_get_state(staux, gr%mesh, ist, ik, psi(:, :, 1))
+            call states_set_state(st, gr%mesh, ist - n, ik, psi(:, :, 1))
           end if
    
         end do
@@ -558,7 +526,8 @@ contains
      do ik = st%d%kpt%start, st%d%kpt%end
        do ist = staux%st_start, staux%st_end
          if(ist <= n) cycle
-         st%zdontusepsi(:, :, ist-n, ik) = staux%zdontusepsi(:, :, ist, ik)
+         call states_get_state(staux, gr%mesh, ist, ik, psi(:, :, 1))
+         call states_set_state(st, gr%mesh, ist - n, ik, psi(:, :, 1))
        end do
      end do
    end if
@@ -567,12 +536,15 @@ contains
 
     do ik = st%d%kpt%start, st%d%kpt%end
       do ist = st%st_start, st%st_end
-        st%zdontusepsi(:, :, ist, ik) = staux%zdontusepsi(:, :, n + ist, ik)
+        call states_get_state(staux, gr%mesh, ist + n, ik, psi(:, :, 1))
+        call states_set_state(st, gr%mesh, ist, ik, psi(:, :, 1))
       end do
     end do
 
 #endif
 
+    SAFE_DEALLOCATE_A(psi)
+    
     ! Change the smearing method by fixing the occupations to 
     ! that of the ground-state such that the unfrozen states inherit 
     ! those values.
@@ -623,9 +595,10 @@ contains
     FLOAT,           intent(out) :: rho(:,:)
     FLOAT, optional, pointer, intent(out) :: Imrho(:,:)
 
+    FLOAT, dimension(:,:), pointer :: density
     integer :: is, ip
     logical :: cmplxscl
-    
+
     PUSH_SUB(states_total_density)
 
     cmplxscl = .false.
@@ -634,9 +607,17 @@ contains
       cmplxscl = .true.
     end if
 
+    nullify(density)
+    if(associated(st%subsys_st))then
+      call base_states_get(st%subsys_st, density)
+    else
+      density => st%rho
+    end if
+    ASSERT(associated(density))
+
     if(.not. cmplxscl) then
       forall(ip = 1:mesh%np, is = 1:st%d%nspin)
-        rho(ip, is) = st%rho(ip, is)
+        rho(ip, is) = density(ip, is)
       end forall
 
       if(associated(st%rho_core)) then
@@ -687,7 +668,7 @@ contains
 #include "complex.F90"
 #include "density_inc.F90"
 
-end module density_m
+end module density_oct_m
 
 
 !! Local Variables:

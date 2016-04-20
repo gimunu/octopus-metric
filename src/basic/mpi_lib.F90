@@ -15,17 +15,17 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: mpi_lib.F90 11591 2013-12-17 09:10:32Z joseba $
+!! $Id: mpi_lib.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
 !> This module contains some common usage patterns of MPI routines.
-module mpi_lib_m
-  use global_m
-  use messages_m
-  use mpi_m
-  use mpi_debug_m
-  use profiling_m
+module mpi_lib_oct_m
+  use global_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use mpi_debug_oct_m
+  use profiling_oct_m
 
   implicit none
 
@@ -42,6 +42,8 @@ module mpi_lib_m
     module procedure dlmpi_gen_allgatherv, zlmpi_gen_allgatherv, ilmpi_gen_allgatherv
   end interface lmpi_gen_allgatherv
 #endif
+  
+  type(profile_t), save :: prof_allgatherv
 
 contains
 
@@ -87,7 +89,7 @@ contains
     neither_is_this_subroutine = 0
   end subroutine this_module_is_not_empty
 #endif
-end module mpi_lib_m
+end module mpi_lib_oct_m
 
 
 !! Local Variables:

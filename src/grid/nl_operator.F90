@@ -15,37 +15,37 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: nl_operator.F90 14633 2015-10-04 05:40:47Z xavier $
+!! $Id: nl_operator.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module nl_operator_m
-  use batch_m
-  use boundaries_m
+module nl_operator_oct_m
+  use batch_oct_m
+  use boundaries_oct_m
 #ifdef HAVE_OPENCL
   use cl
 #endif
   use iso_c_binding
-  use global_m
-  use io_m
-  use loct_pointer_m
-  use math_m
-  use index_m
-  use mesh_m
-  use messages_m
-  use multicomm_m
-  use mpi_m
-  use octcl_kernel_m
-  use opencl_m
-  use operate_f_m
-  use par_vec_m
-  use parser_m
-  use partition_m
-  use profiling_m
-  use simul_box_m
-  use stencil_m
-  use types_m
-  use varinfo_m
+  use global_oct_m
+  use io_oct_m
+  use loct_pointer_oct_m
+  use math_oct_m
+  use index_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use multicomm_oct_m
+  use mpi_oct_m
+  use octcl_kernel_oct_m
+  use opencl_oct_m
+  use operate_f_oct_m
+  use par_vec_oct_m
+  use parser_oct_m
+  use partition_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
+  use stencil_oct_m
+  use types_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -107,7 +107,10 @@ module nl_operator_m
     integer, pointer :: ri(:,:)
     integer, pointer :: rimap(:)
     integer, pointer :: rimap_inv(:)
-    
+
+    integer                   :: ninner
+    integer                   :: nouter
+
     type(nl_operator_index_t) :: inner
     type(nl_operator_index_t) :: outer
 
@@ -116,6 +119,9 @@ module nl_operator_m
     type(opencl_mem_t) :: buff_imax
     type(opencl_mem_t) :: buff_ri
     type(opencl_mem_t) :: buff_map
+    type(opencl_mem_t) :: buff_all
+    type(opencl_mem_t) :: buff_inner
+    type(opencl_mem_t) :: buff_outer
     type(opencl_mem_t) :: buff_stencil
     type(opencl_mem_t) :: buff_ip_to_xyz
     type(opencl_mem_t) :: buff_xyz_to_ip
@@ -371,7 +377,10 @@ contains
     integer :: ir, maxp, iinner, iouter
     logical :: change, force_change
     character(len=200) :: flags
-
+#ifdef HAVE_OPENCL
+    integer, allocatable :: inner_points(:), outer_points(:), all_points(:)    
+#endif
+    
     PUSH_SUB(nl_operator_build)
 
     if(mesh%parallel_in_domains .and. .not. const_w) then
@@ -394,7 +403,7 @@ contains
       if (op%cmplx_op) then
         SAFE_ALLOCATE(op%w_im(1:op%stencil%size, 1:1))
       end if
-      if(in_debug_mode) then
+      if(debug%info) then
         message(1) = 'Info: nl_operator_build: working with constant weights.'
         call messages_info(1)
       end if
@@ -403,7 +412,7 @@ contains
       if (op%cmplx_op) then
         SAFE_ALLOCATE(op%w_im(1:op%stencil%size, 1:op%np))
       end if
-      if(in_debug_mode) then
+      if(debug%info) then
         message(1) = 'Info: nl_operator_build: working with non-constant weights.'
         call messages_info(1)
       end if
@@ -598,6 +607,8 @@ contains
       write(flags, '(i5)') op%stencil%size
       flags='-DNDIM=3 -DSTENCIL_SIZE='//trim(adjustl(flags))
 
+      if(op%mesh%parallel_in_domains) flags = '-DINDIRECT '//trim(flags)
+      
       select case(function_opencl)
       case(OP_INVMAP)
         call octcl_kernel_build(op%kernel, 'operate.cl', 'operate', flags)
@@ -618,9 +629,45 @@ contains
         call opencl_write_buffer(op%buff_imax, op%nri, op%rimap_inv(2:))
 
       case(OP_MAP)
+
         call opencl_create_buffer(op%buff_map, CL_MEM_READ_ONLY, TYPE_INTEGER, pad(op%mesh%np, opencl_max_workgroup_size()))
         call opencl_write_buffer(op%buff_map, op%mesh%np, (op%rimap - 1)*op%stencil%size)
 
+        if(op%mesh%parallel_in_domains) then
+          
+          SAFE_ALLOCATE(inner_points(1:op%mesh%np))
+          SAFE_ALLOCATE(outer_points(1:op%mesh%np))
+          SAFE_ALLOCATE(all_points(1:op%mesh%np))
+          
+          op%ninner = 0
+          op%nouter = 0
+          
+          do ii = 1, op%mesh%np
+            all_points(ii) = ii - 1
+            maxp = ii + maxval(op%ri(1:op%stencil%size, op%rimap(ii)))
+            if(maxp <= op%mesh%np) then
+              op%ninner = op%ninner + 1
+              inner_points(op%ninner) = ii - 1
+            else
+              op%nouter = op%nouter + 1
+              outer_points(op%nouter) = ii - 1
+            end if
+          end do
+          
+          call opencl_create_buffer(op%buff_all, CL_MEM_READ_ONLY, TYPE_INTEGER, pad(op%mesh%np, opencl_max_workgroup_size()))
+          call opencl_write_buffer(op%buff_all, op%mesh%np, all_points)
+        
+          call opencl_create_buffer(op%buff_inner, CL_MEM_READ_ONLY, TYPE_INTEGER, pad(op%ninner, opencl_max_workgroup_size()))
+          call opencl_write_buffer(op%buff_inner, op%ninner, inner_points)
+          
+          call opencl_create_buffer(op%buff_outer, CL_MEM_READ_ONLY, TYPE_INTEGER, pad(op%nouter, opencl_max_workgroup_size()))
+          call opencl_write_buffer(op%buff_outer, op%nouter, outer_points)
+
+        end if
+        
+        SAFE_DEALLOCATE_A(inner_points)
+        SAFE_DEALLOCATE_A(outer_points)
+        
       case(OP_NOMAP)
 
         ASSERT(op%mesh%sb%dim == 3)
@@ -676,7 +723,7 @@ contains
 
     PUSH_SUB(nl_operator_update_weights)
 
-    if(in_debug_mode) then
+    if(debug%info) then
 
       write(message(1), '(3a)') 'Debug info: Finite difference weights for ', trim(this%label), '.'
       write(message(2), '(a)')  '            Spacing:'
@@ -1099,6 +1146,11 @@ contains
 
       case(OP_MAP)
         call opencl_release_buffer(op%buff_map)
+        if(op%mesh%parallel_in_domains) then
+          call opencl_release_buffer(op%buff_all)
+          call opencl_release_buffer(op%buff_inner)
+          call opencl_release_buffer(op%buff_outer)
+        end if
 
       case(OP_NOMAP)
         call opencl_release_buffer(op%buff_map)
@@ -1182,7 +1234,7 @@ contains
 #include "complex_single.F90"
 #include "nl_operator_inc.F90"  
 
-end module nl_operator_m
+end module nl_operator_oct_m
 
 !! Local Variables:
 !! mode: f90

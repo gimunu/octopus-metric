@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: mesh_batch_inc.F90 14077 2015-05-27 02:25:34Z dstrubbe $
+!! $Id: mesh_batch_inc.F90 15259 2016-04-08 12:08:37Z xavier $
 
 subroutine X(mesh_batch_dotp_matrix)(mesh, aa, bb, dot, symm, reduce)
   type(mesh_t),      intent(in)    :: mesh
@@ -149,15 +149,15 @@ subroutine X(mesh_batch_dotp_matrix)(mesh, aa, bb, dot, symm, reduce)
 
     call profiling_in(prof_gemmcl, "DOTP_BATCH_CL_GEMM")
 
-#ifdef HAVE_CLAMDBLAS
+#ifdef HAVE_CLBLAS
     
-    call aX(clAmdblas,gemmEx)(order = clAmdBlasColumnMajor, transA = clAmdBlasNoTrans, transB = clAmdBlasTrans, &
+    call aX(clblas,gemmEx)(order = clblasColumnMajor, transA = clblasNoTrans, transB = clblasTrans, &
       M = int(aa%nst, 8), N = int(bb%nst, 8), K = int(mesh%np, 8), alpha = R_TOTYPE(M_ONE), &
       A = aa%pack%buffer%mem, offA = 0_8, lda = int(aa%pack%size(1), 8), &
       B = bb%pack%buffer%mem, offB = 0_8, ldb = int(bb%pack%size(1), 8), beta = R_TOTYPE(M_ZERO), &
       C = dot_buffer%mem, offC = 0_8, ldc = int(aa%nst, 8), &
       CommandQueue = opencl%command_queue, status = ierr)
-    if(ierr /= clAmdBlasSuccess) call clblas_print_error(ierr, 'clAmdBlasXgemmEx')
+    if(ierr /= clblasSuccess) call clblas_print_error(ierr, 'clblasXgemmEx')
 
 #else
 
@@ -420,8 +420,7 @@ subroutine X(mesh_batch_dotp_vector)(mesh, aa, bb, dot, reduce, cproduct)
   type(profile_t), save :: prof, profcomm
   R_TYPE, allocatable :: tmp(:), cltmp(:, :)
 #ifdef HAVE_OPENCL
-  integer :: wgsize, local_mem_size
-  type(opencl_mem_t)  :: dot_buffer
+  type(opencl_mem_t)  :: dot_buffer, scratch_buffer
   type(profile_t), save :: prof_copy
 #endif
 
@@ -467,12 +466,14 @@ subroutine X(mesh_batch_dotp_vector)(mesh, aa, bb, dot, reduce, cproduct)
     
     if(mesh%use_curvilinear) then
       if(.not. cproduct_) then
+        !$omp parallel do private(ip, ist) reduction(+:tmp)
         do ip = 1, mesh%np
           do ist = 1, aa%nst_linear
             tmp(ist) = tmp(ist) + mesh%vol_pp(ip)*R_CONJ(aa%pack%X(psi)(ist, ip))*bb%pack%X(psi)(ist, ip)
           end do
         end do
       else
+        !$omp parallel do private(ip, ist) reduction(+:tmp)
         do ip = 1, mesh%np
           do ist = 1, aa%nst_linear
             tmp(ist) = tmp(ist) + mesh%vol_pp(ip)*aa%pack%X(psi)(ist, ip)*bb%pack%X(psi)(ist, ip)
@@ -481,12 +482,14 @@ subroutine X(mesh_batch_dotp_vector)(mesh, aa, bb, dot, reduce, cproduct)
       end if
     else
       if(.not. cproduct_) then
+        !$omp parallel do private(ip, ist) reduction(+:tmp)
         do ip = 1, mesh%np
           do ist = 1, aa%nst_linear
             tmp(ist) = tmp(ist) + R_CONJ(aa%pack%X(psi)(ist, ip))*bb%pack%X(psi)(ist, ip)
           end do
         end do
       else
+        !$omp parallel do private(ip, ist) reduction(+:tmp)
         do ip = 1, mesh%np
           do ist = 1, aa%nst_linear
             tmp(ist) = tmp(ist) + aa%pack%X(psi)(ist, ip)*bb%pack%X(psi)(ist, ip)
@@ -507,43 +510,38 @@ subroutine X(mesh_batch_dotp_vector)(mesh, aa, bb, dot, reduce, cproduct)
 
   case(BATCH_CL_PACKED)
 
-    bsize = 500
-    
-    SAFE_ALLOCATE(cltmp(1:aa%pack%size(1), 1:bsize))
 #ifdef HAVE_OPENCL
 
-    call opencl_create_buffer(dot_buffer, CL_MEM_WRITE_ONLY, R_TYPE_VAL, aa%pack%size(1)*bsize)
+    call opencl_create_buffer(dot_buffer, CL_MEM_WRITE_ONLY, R_TYPE_VAL, aa%pack%size(1))
+    call opencl_create_buffer(scratch_buffer, CL_MEM_READ_WRITE, R_TYPE_VAL, mesh%np)
 
-    call clGetDeviceInfo(opencl%device, CL_DEVICE_LOCAL_MEM_SIZE, local_mem_size, cl_status)
-    wgsize = local_mem_size/types_get_size(R_TYPE_VAL)
-    wgsize = min(wgsize, opencl_kernel_workgroup_size(X(kernel_dot_vector))/aa%pack%size(1))
+    do ist = 1, aa%nst_linear
 
-    call opencl_set_kernel_arg(X(kernel_dot_vector), 0, mesh%np)
-    call opencl_set_kernel_arg(X(kernel_dot_vector), 1, mesh%np/bsize + 1)
-    call opencl_set_kernel_arg(X(kernel_dot_vector), 2, aa%pack%buffer)
-    call opencl_set_kernel_arg(X(kernel_dot_vector), 3, log2(aa%pack%size(1)))
-    call opencl_set_kernel_arg(X(kernel_dot_vector), 4, bb%pack%buffer)
-    call opencl_set_kernel_arg(X(kernel_dot_vector), 5, log2(bb%pack%size(1)))
-    call opencl_set_kernel_arg(X(kernel_dot_vector), 6, dot_buffer)
-    call opencl_set_kernel_arg(X(kernel_dot_vector), 7, R_TYPE_VAL, wgsize*aa%pack%size(1))
-    
-    call opencl_kernel_run(X(kernel_dot_vector), (/aa%pack%size(1), wgsize, bsize/), (/aa%pack%size(1), wgsize, 1/))
-    
-    call opencl_finish()
-
-    call profiling_in(prof_copy, 'DOTPV_BATCH_COPY')
-    call opencl_read_buffer(dot_buffer, aa%pack%size(1)*bsize, cltmp)
-    call profiling_count_transfers(aa%pack%size(1)*bsize, cltmp(1, 1))
-    call opencl_finish()
-
-    call profiling_out(prof_copy)
-
-    call opencl_release_buffer(dot_buffer)
+#ifdef R_TREAL
+      call clblasDdot(N = int(mesh%np, 8), dotProduct = dot_buffer%mem, offDP = int(ist - 1, 8), &
+        X = aa%pack%buffer%mem, offx = int(ist - 1, 8), incx = aa%pack%size(1), &
+        Y = bb%pack%buffer%mem, offy = int(ist - 1, 8), incy = bb%pack%size(1), &
+        scratchBuff = scratch_buffer%mem, CommandQueue = opencl%command_queue, status = status)
+      if(status /= clblasSuccess) call clblas_print_error(status, 'clblasDdot')
+#else
+      call clblasZdotc(N = int(mesh%np, 8), dotProduct = dot_buffer%mem, offDP = int(ist - 1, 8), &
+        X = aa%pack%buffer%mem, offx = int(ist - 1, 8), incx = aa%pack%size(1), &
+        Y = bb%pack%buffer%mem, offy = int(ist - 1, 8), incy = bb%pack%size(1), &
+        scratchBuff = scratch_buffer%mem, CommandQueue = opencl%command_queue, status = status)
+      if(status /= clblasSuccess) call clblas_print_error(status, 'clblasDdot')
 #endif
 
-    do ip = 2, bsize
-      forall(ist = 1:aa%nst_linear) cltmp(ist, 1) = cltmp(ist, 1) + cltmp(ist, ip)
     end do
+
+    call opencl_release_buffer(scratch_buffer)
+
+    SAFE_ALLOCATE(cltmp(1:aa%pack%size(1), 1))
+
+    call opencl_read_buffer(dot_buffer, aa%pack%size(1), cltmp)
+
+    call opencl_release_buffer(dot_buffer)
+
+#endif
 
     do ist = 1, aa%nst
       dot(ist) = M_ZERO
@@ -553,7 +551,6 @@ subroutine X(mesh_batch_dotp_vector)(mesh, aa, bb, dot, reduce, cproduct)
       end do
     end do
 
-    SAFE_DEALLOCATE_A(cltmp)
   end select
 
   if(mesh%parallel_in_domains .and. reduce_) then
@@ -787,13 +784,11 @@ subroutine X(priv_mesh_batch_nrm2)(mesh, aa, nrm2)
   type(batch_t),           intent(in)    :: aa
   FLOAT,                   intent(out)   :: nrm2(:)
 
-  integer :: ist, idim, indb, ip
+  integer :: ist, idim, indb, ip, status
   R_TYPE :: a0
   FLOAT, allocatable :: scal(:), ssq(:)
 #ifdef HAVE_OPENCL
-  type(opencl_mem_t)  :: nrm2_buffer
-  integer  :: redsize, lredsize
-  FLOAT, allocatable :: ssqred(:, :)
+  type(opencl_mem_t)  :: nrm2_buffer, scratch_buffer
 #endif
   type(profile_t), save :: prof
 
@@ -862,44 +857,42 @@ subroutine X(priv_mesh_batch_nrm2)(mesh, aa, nrm2)
 
     ASSERT(.not. mesh%use_curvilinear)
 
-    SAFE_ALLOCATE(ssq(1:aa%pack%size_real(1)))
+    SAFE_ALLOCATE(ssq(1:aa%pack%size(1)))
+
 #ifdef HAVE_OPENCL
+    call opencl_create_buffer(nrm2_buffer, CL_MEM_WRITE_ONLY, TYPE_FLOAT, aa%pack%size(1))
+    call opencl_create_buffer(scratch_buffer, CL_MEM_READ_WRITE, R_TYPE_VAL, 2*mesh%np)
 
-    lredsize = opencl_kernel_workgroup_size(kernel_nrm2_vector)/aa%pack%size_real(1)
-    redsize = pad(1000, lredsize)
+    do ist = 1, aa%nst_linear
 
-    SAFE_ALLOCATE(ssqred(1:aa%pack%size_real(1), 1:redsize))
-    call opencl_create_buffer(nrm2_buffer, CL_MEM_WRITE_ONLY, TYPE_FLOAT, aa%pack%size_real(1)*redsize)
-
-    call opencl_set_kernel_arg(kernel_nrm2_vector, 0, mesh%np)
-    call opencl_set_kernel_arg(kernel_nrm2_vector, 1, aa%pack%buffer)
-    call opencl_set_kernel_arg(kernel_nrm2_vector, 2, log2(aa%pack%size_real(1)))
-    call opencl_set_kernel_arg(kernel_nrm2_vector, 3, nrm2_buffer)
-    
-    call opencl_kernel_run(kernel_nrm2_vector, (/aa%pack%size_real(1), redsize/), (/aa%pack%size_real(1), lredsize/))
-    
-    call opencl_finish()
-
-    call opencl_read_buffer(nrm2_buffer, aa%pack%size_real(1)*redsize, ssqred)
-    call opencl_release_buffer(nrm2_buffer)
-
-    do indb = 1, aa%pack%size_real(1)
-      ssq(indb) = blas_nrm2(redsize, ssqred(indb, 1), aa%pack%size_real(1))
+#ifdef R_TREAL
+      call clblasDnrm2(N = int(mesh%np, 8), NRM2 = nrm2_buffer%mem, offNRM2 = int(ist - 1, 8), &
+        X = aa%pack%buffer%mem, offx = int(ist - 1, 8), incx = aa%pack%size(1), &
+        scratchBuff = scratch_buffer%mem, CommandQueue = opencl%command_queue, status = status)
+      if(status /= clblasSuccess) call clblas_print_error(status, 'clblasDdot')
+#else
+      call clblasDznrm2(N = int(mesh%np, 8), NRM2 = nrm2_buffer%mem, offNRM2 = int(ist - 1, 8), &
+        X = aa%pack%buffer%mem, offx = int(ist - 1, 8), incx = aa%pack%size(1), &
+        scratchBuff = scratch_buffer%mem, CommandQueue = opencl%command_queue, status = status)
+      if(status /= clblasSuccess) call clblas_print_error(status, 'clblasDdot')
+#endif
+      
     end do
+
+    call opencl_read_buffer(nrm2_buffer, aa%pack%size(1), ssq)
+
+    call opencl_release_buffer(nrm2_buffer)
+    call opencl_release_buffer(scratch_buffer)
+
+#endif
 
     do ist = 1, aa%nst
       nrm2(ist) = M_ZERO
       do idim = 1, aa%dim
         indb = batch_ist_idim_to_linear(aa, (/ist, idim/))
-#ifdef R_TREAL
-        nrm2(ist) = hypot(nrm2(ist), sqrt(mesh%volume_element*ssq(indb)))
-#else
-        nrm2(ist) = hypot(nrm2(ist), sqrt(mesh%volume_element*ssq(2*(indb - 1) + 1)))
-        nrm2(ist) = hypot(nrm2(ist), sqrt(mesh%volume_element*ssq(2*(indb - 1) + 2)))
-#endif
+        nrm2(ist) = hypot(nrm2(ist), sqrt(mesh%volume_element)*ssq(indb))
       end do
     end do
-#endif
 
     SAFE_DEALLOCATE_A(ssq)
 

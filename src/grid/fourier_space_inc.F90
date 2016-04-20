@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: fourier_space_inc.F90 13392 2015-03-18 16:30:00Z joseba $
+!! $Id: fourier_space_inc.F90 15016 2016-01-08 21:44:30Z xavier $
 
 ! ---------------------------------------------------------
 !> The following routines convert the function between real space and Fourier space
@@ -82,7 +82,7 @@ subroutine X(fourier_space_op_init)(this, cube, op, in_device)
   nullify(this%dop)
   nullify(this%zop)
 
-  if(cube%fft%library /= FFTLIB_CLAMD .or. .not. optional_default(in_device, .true.)) then
+  if(cube%fft%library /= FFTLIB_OPENCL .or. .not. optional_default(in_device, .true.)) then
     this%in_device_memory = .false.
     SAFE_ALLOCATE(this%X(op)(1:cube%fs_n(1), 1:cube%fs_n(2), 1:cube%fs_n(3)))
     forall (kk = 1:cube%fs_n(3), jj = 1:cube%fs_n(2), ii = 1:cube%fs_n(1)) 
@@ -168,7 +168,7 @@ subroutine X(fourier_space_op_apply)(this, cube, cf)
       end do
     end do
     !$omp end parallel do
-  else if(cube%fft%library == FFTLIB_CLAMD) then
+  else if(cube%fft%library == FFTLIB_OPENCL) then
 #ifdef HAVE_OPENCL
     call opencl_set_kernel_arg(X(zmul), 0, product(cube%fs_n(1:3)))
     call opencl_set_kernel_arg(X(zmul), 1, this%op_buffer)

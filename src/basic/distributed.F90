@@ -1,4 +1,4 @@
-!! Copyright (C) 2008 X. Andrade
+!! Copyright (C) 2008-2016 X. Andrade
 !!
 !! This program is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU General Public License as published by
@@ -15,20 +15,20 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: distributed.F90 14221 2015-06-05 16:37:56Z xavier $
+!! $Id: distributed.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module distributed_m
-  use global_m
-  use io_m
-  use loct_m
-  use messages_m
-  use mpi_m
-  use multicomm_m
-  use parser_m
-  use profiling_m
-  use varinfo_m
+module distributed_oct_m
+  use global_oct_m
+  use io_oct_m
+  use loct_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use multicomm_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -39,19 +39,20 @@ module distributed_m
        distributed_nullify,         &
        distributed_init,            &
        distributed_copy,            &
-       distributed_end
+       distributed_end,             &
+       distributed_allgather
   
 
   type distributed_t
-    integer :: start
-    integer :: end
-    integer :: nlocal
-    integer :: nglobal
-    logical :: parallel
-    integer, pointer :: node(:)
-    integer, pointer :: range(:, :)
-    integer, pointer :: num(:)
-    type(mpi_grp_t)  :: mpi_grp
+    integer              :: start
+    integer              :: end
+    integer              :: nlocal
+    integer              :: nglobal
+    logical              :: parallel
+    integer, allocatable :: node(:)
+    integer, allocatable :: range(:, :)
+    integer, allocatable :: num(:)
+    type(mpi_grp_t)      :: mpi_grp
   end type distributed_t
   
 contains
@@ -72,7 +73,7 @@ contains
     end if
 
     this%parallel        = .false.
-    nullify(this%node, this%range, this%num)
+
     call mpi_grp_init(this%mpi_grp, -1)
 
     POP_SUB(distributed_nullify)
@@ -81,26 +82,25 @@ contains
 
   ! ---------------------------------------------------------
   subroutine distributed_init(this, total, comm, tag, scalapack_compat)
-    type(distributed_t), intent(out) :: this
-    integer,             intent(in)  :: total
-    integer,             intent(in)  :: comm
-    character(len=*),    intent(in)  :: tag
-    logical, optional,   intent(in)  :: scalapack_compat
+    type(distributed_t),        intent(out) :: this
+    integer,                    intent(in)  :: total
+    integer,                    intent(in)  :: comm
+    character(len=*), optional, intent(in)  :: tag
+    logical,          optional, intent(in)  :: scalapack_compat
 
-#ifdef HAVE_MPI
     integer :: kk
-#endif
 
     PUSH_SUB(distributed_init)
     
     this%nglobal = total
 
-#ifdef HAVE_MPI
     call mpi_grp_init(this%mpi_grp, comm)
     if(this%mpi_grp%size == 1 .or. this%nglobal == 1) then
-#endif
       
       SAFE_ALLOCATE(this%node(1:total))
+      SAFE_ALLOCATE(this%range(1:2, 0:this%mpi_grp%size - 1))
+      SAFE_ALLOCATE(this%num(0:this%mpi_grp%size - 1))
+      
       ! Defaults.
       this%node(1:total)   = 0
       this%start           = 1
@@ -108,10 +108,12 @@ contains
       this%nlocal          = total
       this%nglobal         = total
       this%parallel        = .false.
-      nullify(this%range, this%num)
+      this%range(1, 0)     = 1
+      this%range(2, 0)     = total
+      this%num(0)          = total
+      
       call mpi_grp_init(this%mpi_grp, -1)
       
-#ifdef HAVE_MPI
     else
 
       this%parallel = .true.
@@ -123,16 +125,22 @@ contains
       call multicomm_divide_range(this%nglobal, this%mpi_grp%size, this%range(1, :), this%range(2, :), &
         lsize = this%num, scalapack_compat = scalapack_compat)
 
-      message(1) = 'Info: Parallelization in ' // trim(tag)
-      call messages_info(1)
+      if(present(tag)) then
+        message(1) = 'Info: Parallelization in ' // trim(tag)
+        call messages_info(1)
+      end if
 
       do kk = 1, this%mpi_grp%size
-        write(message(1),'(a,i4,a,i6,a)') 'Info: Node in group ', kk - 1, &
-             ' will manage ', this%num(kk - 1), ' '//trim(tag)
-        if(this%num(kk - 1) > 0) then
-          write(message(1),'(a,a,i6,a,i6)') trim(message(1)), ':', this%range(1, kk - 1), " - ", this%range(2, kk - 1)
+
+        if(present(tag)) then
+          write(message(1),'(a,i4,a,i6,a)') 'Info: Node in group ', kk - 1, &
+            ' will manage ', this%num(kk - 1), ' '//trim(tag)
+          if(this%num(kk - 1) > 0) then
+            write(message(1),'(a,a,i6,a,i6)') trim(message(1)), ':', this%range(1, kk - 1), " - ", this%range(2, kk - 1)
+          end if
+          call messages_info(1)
         end if
-        call messages_info(1)
+        
         if(this%mpi_grp%rank  ==  kk - 1) then
           this%start  = this%range(1, kk - 1)
           this%end    = this%range(2, kk - 1)
@@ -144,7 +152,6 @@ contains
       end do
       
     end if
-#endif
     
     POP_SUB(distributed_init)
   end subroutine distributed_init
@@ -169,19 +176,17 @@ contains
 
     call mpi_grp_init(out%mpi_grp, in%mpi_grp%comm)
     
-    nullify(out%node, out%range, out%num)
-
-    if(associated(in%node)) then
+    if(allocated(in%node)) then
       SAFE_ALLOCATE(out%node(1:in%nglobal))
       out%node(1:in%nglobal) = in%node(1:in%nglobal)
     end if
 
-    if(associated(in%range)) then
+    if(allocated(in%range)) then
       SAFE_ALLOCATE(out%range(1:2, 0:size - 1))
       out%range(1:2, 0:size - 1) = in%range(1:2, 0:size - 1)
     end if
 
-    if(associated(in%num)) then
+    if(allocated(in%num)) then
       SAFE_ALLOCATE(out%num(0:size - 1))
       out%num(0:size - 1) = in%num(0:size - 1)
     end if
@@ -196,14 +201,40 @@ contains
     
     PUSH_SUB(distributed_end)
 
-    SAFE_DEALLOCATE_P(this%node)
-    SAFE_DEALLOCATE_P(this%range)
-    SAFE_DEALLOCATE_P(this%num)
+    SAFE_DEALLOCATE_A(this%node)
+    SAFE_DEALLOCATE_A(this%range)
+    SAFE_DEALLOCATE_A(this%num)
 
     POP_SUB(distributed_end)
   end subroutine distributed_end
 
-end module distributed_m
+  ! --------------------------------------------------------
+
+  subroutine distributed_allgather(this, aa)
+    type(distributed_t), intent(in)    :: this
+    FLOAT,               intent(inout) :: aa(:)
+
+    integer, allocatable :: displs(:)
+
+    if(.not. this%parallel) return
+    
+    PUSH_SUB(distributed_allgather)
+
+    SAFE_ALLOCATE(displs(0:this%mpi_grp%size - 1))
+
+    displs(0:this%mpi_grp%size - 1) = this%range(1, 0:this%mpi_grp%size - 1) - 1
+
+#ifdef HAVE_MPI    
+    call MPI_Allgatherv(MPI_IN_PLACE, this%nlocal, MPI_FLOAT, &
+      aa(1), this%num(0), displs(0), MPI_FLOAT, this%mpi_grp%comm, mpi_err)
+#endif
+    
+    SAFE_DEALLOCATE_A(displs)
+    
+    POP_SUB(distributed_allgather)
+  end subroutine distributed_allgather
+
+end module distributed_oct_m
 
 
 !! Local Variables:

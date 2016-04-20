@@ -15,44 +15,42 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: run.F90 14622 2015-10-02 22:46:44Z xavier $
+!! $Id: run.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module run_m
-  use casida_m
-  use em_resp_m
-  use fft_m
-  use geom_opt_m
-  use global_m
-  use ground_state_m
-  use hamiltonian_m
-  use invert_ks_m
-  use json_m
-  use parser_m
-  use messages_m
-  use mpi_debug_m
-  use memory_m
-  use multicomm_m
-  use opt_control_m
-  use phonons_fd_m
-  use phonons_lr_m
-  use poisson_m
-  use kdotp_m
-  use profiling_m
-  use pulpo_m
-  use restart_m
-  use ssys_config_m
-  use ssys_handle_m
-  use ssys_model_m
-  use ssys_hamiltonian_m
-  use static_pol_m
-  use system_m
-  use td_m
-  use unit_system_m
-  use unocc_m
-  use varinfo_m
-  use vdw_m
+module run_oct_m
+  use base_hamiltonian_oct_m
+  use base_handle_oct_m
+  use base_model_oct_m
+  use casida_oct_m
+  use em_resp_oct_m
+  use fft_oct_m
+  use geom_opt_oct_m
+  use global_oct_m
+  use ground_state_oct_m
+  use hamiltonian_oct_m
+  use invert_ks_oct_m
+  use parser_oct_m
+  use messages_oct_m
+  use mpi_debug_oct_m
+  use memory_oct_m
+  use multicomm_oct_m
+  use opt_control_oct_m
+  use phonons_fd_oct_m
+  use phonons_lr_oct_m
+  use poisson_oct_m
+  use kdotp_oct_m
+  use profiling_oct_m
+  use pulpo_oct_m
+  use restart_oct_m
+  use static_pol_oct_m
+  use system_oct_m
+  use td_oct_m
+  use unit_system_oct_m
+  use unocc_oct_m
+  use varinfo_oct_m
+  use vdw_oct_m
 
   implicit none
 
@@ -126,13 +124,10 @@ contains
     type(system_t)      :: sys
     type(hamiltonian_t) :: hm
     type(profile_t), save :: calc_mode_prof
-    type(json_object_t) :: config
-    type(ssys_handle_t) :: subsys_handle
     logical :: fromScratch
 
-    type(ssys_model_t),       pointer :: subsys_model
-    type(ssys_hamiltonian_t), pointer :: subsys_hm
-    
+    type(base_hamiltonian_t), pointer :: subsys_hm
+
     PUSH_SUB(run)
 
     calc_mode_id = cm
@@ -143,59 +138,57 @@ contains
 
     call calc_mode_init()
 
-    if(calc_mode_id /= CM_PULPO_A_FEIRA) then
-      call restart_module_init()
+    if(calc_mode_id == CM_PULPO_A_FEIRA) then
+      call pulpo_print()
+      POP_SUB(run)
+      return
+    end if
 
-      ! initialize FFTs
-      call fft_all_init()
+    call restart_module_init()
 
-      call unit_system_init()
+    ! initialize FFTs
+    call fft_all_init()
 
-      nullify(subsys_model, subsys_hm)
-      if(ssys_config_parse_use())then
-        call system_init(sys, subsys_handle, config)
-        call ssys_handle_get(subsys_handle, subsys_model)
-        ASSERT(associated(subsys_model))
-        call ssys_model_get(subsys_model, subsys_hm)
-        ASSERT(associated(subsys_hm))
-        call hamiltonian_init(hm, sys%gr, sys%geo, sys%st, sys%ks%theory_level, sys%ks%xc_family, subsys_hm)
-        nullify(subsys_model, subsys_hm)
+    call unit_system_init()
 
-        ! At present, PCM calculations in parallel must have ParallelizationStrategy = par_states
-        if (hm%pcm%run_pcm) then 
-           if ( (sys%mc%par_strategy /= P_STRATEGY_SERIAL).and.(sys%mc%par_strategy /= P_STRATEGY_STATES) ) then
-            message(1) = "Parallel calculations with PCM are only possible with ParallelizationStrategy=par_states"
-            call messages_fatal(1)
-           endif
-        endif
-      else
-        call system_init(sys)
-        call hamiltonian_init(hm, sys%gr, sys%geo, sys%st, sys%ks%theory_level, sys%ks%xc_family)
+    call system_init(sys)
 
-        ! At present, PCM calculations in parallel must have ParallelizationStrategy = par_states
-        if (hm%pcm%run_pcm) then 
-           if ( (sys%mc%par_strategy /= P_STRATEGY_SERIAL).and.(sys%mc%par_strategy /= P_STRATEGY_STATES) ) then
-            message(1) = "Parallel calculations with PCM are only possible with ParallelizationStrategy=par_states"
-            call messages_fatal(1)
-           endif
-        endif
+    nullify(subsys_hm)
+    if(associated(sys%subsys_handle))then
+      call subsystems_get(sys%subsys_handle, subsys_hm)
+      ASSERT(associated(subsys_hm))
+      call hamiltonian_init(hm, sys%gr, sys%geo, sys%st, sys%ks%theory_level, sys%ks%xc_family, subsys_hm)
+      nullify(subsys_hm)
+
+      ! At present, PCM calculations in parallel must have ParallelizationStrategy = par_states
+      if (hm%pcm%run_pcm) then 
+        if ( (sys%mc%par_strategy /= P_STRATEGY_SERIAL).and.(sys%mc%par_strategy /= P_STRATEGY_STATES) ) then
+          call messages_experimental('Parallel in domain calculations with PCM')
+        end if
       end if
-      
-      call messages_print_stress(stdout, 'Approximate memory requirements')
-      call memory_run(sys)
-      call messages_print_stress(stdout)
+    else
+      call hamiltonian_init(hm, sys%gr, sys%geo, sys%st, sys%ks%theory_level, sys%ks%xc_family)
 
-      if(calc_mode_id /= CM_DUMMY) then
-        message(1) = "Info: Generating external potential"
-        call messages_info(1)
-        call hamiltonian_epot_generate(hm, sys%gr, sys%geo, sys%st)
-        message(1) = "      done."
-        call messages_info(1)
+      if (hm%pcm%run_pcm) then 
+        if ( (sys%mc%par_strategy /= P_STRATEGY_SERIAL).and.(sys%mc%par_strategy /= P_STRATEGY_STATES) ) then
+          call messages_experimental('Parallel in domain calculations with PCM')
+        end if
       end if
     end if
 
-    if(calc_mode_id /= CM_PULPO_A_FEIRA .and. &
-      sys%ks%theory_level/=INDEPENDENT_PARTICLES) then
+    call messages_print_stress(stdout, 'Approximate memory requirements')
+    call memory_run(sys)
+    call messages_print_stress(stdout)
+
+    if(calc_mode_id /= CM_DUMMY) then
+      message(1) = "Info: Generating external potential"
+      call messages_info(1)
+      call hamiltonian_epot_generate(hm, sys%gr, sys%geo, sys%st)
+      message(1) = "      done."
+      call messages_info(1)
+    end if
+
+    if(sys%ks%theory_level /= INDEPENDENT_PARTICLES) then
       call poisson_async_init(sys%ks%hartree_solver, sys%mc)
       ! slave nodes do not call the calculation routine
       if(multicomm_is_slave(sys%mc))then
@@ -261,24 +254,17 @@ contains
       case(CM_INVERTKDS)
         call invert_ks_run(sys, hm)
       case(CM_PULPO_A_FEIRA)
-        call pulpo_print()
+        ASSERT(.false.) !this is handled before, if we get here, it is an error
       end select
 
       call profiling_out(calc_mode_prof)
     end if
-    
-    if(calc_mode_id /= CM_PULPO_A_FEIRA) then
-      if(sys%ks%theory_level/=INDEPENDENT_PARTICLES) &
-        call poisson_async_end(sys%ks%hartree_solver, sys%mc)
 
-      call hamiltonian_end(hm)
-      call system_end(sys)
-      if(ssys_config_parse_use()) then
-        call ssys_handle_end(subsys_handle)
-        call json_end(config)
-      end if
-      call fft_all_end()
-    end if
+    if(sys%ks%theory_level /= INDEPENDENT_PARTICLES) call poisson_async_end(sys%ks%hartree_solver, sys%mc)
+    
+    call hamiltonian_end(hm)
+    call system_end(sys)
+    call fft_all_end()
 
 #ifdef HAVE_MPI
     call mpi_debug_statistics()
@@ -306,7 +292,26 @@ contains
 
   end subroutine run
 
-end module run_m
+  ! ---------------------------------------------------------
+  subroutine subsystems_get(this, subsys_hm)
+    type(base_handle_t),       intent(in) :: this
+    type(base_hamiltonian_t), pointer     :: subsys_hm
+
+    type(base_model_t), pointer :: subsys_model
+    
+    PUSH_SUB(subsystems_get)
+
+    nullify(subsys_hm, subsys_model)
+    call base_handle_get(this, subsys_model)
+    ASSERT(associated(subsys_model))
+    call base_model_get(subsys_model, subsys_hm)
+    nullify(subsys_model)
+      
+    POP_SUB(subsystems_get)
+  end subroutine subsystems_get
+
+
+end module run_oct_m
 
 !! Local Variables:
 !! mode: f90

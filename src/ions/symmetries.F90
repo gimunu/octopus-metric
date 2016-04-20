@@ -15,21 +15,21 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: symmetries.F90 14695 2015-10-23 10:19:48Z jrfsousa $
+!! $Id: symmetries.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module symmetries_m
-  use geometry_m
-  use global_m
-  use messages_m
-  use mpi_m
-  use parser_m
-  use profiling_m
-  use species_m
-  use symm_op_m
+module symmetries_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use species_oct_m
+  use symm_op_oct_m
   use spglib_f08
-  use lalg_adv_m
+  use lalg_adv_oct_m
 
 
   implicit none
@@ -62,7 +62,7 @@ module symmetries_m
     subroutine symmetries_finite_init(natoms, types, positions, verbosity, point_group)
       integer, intent(in)  :: natoms
       integer, intent(in)  :: types !< (natoms)
-      real*8,  intent(in)  :: positions !< (3, natoms)
+      real(8), intent(in)  :: positions !< (3, natoms)
       integer, intent(in)  :: verbosity
       integer, intent(out) :: point_group
     end subroutine symmetries_finite_init
@@ -456,7 +456,7 @@ contains
 
   end function symmetries_identity_index
 
-end module symmetries_m
+end module symmetries_oct_m
 
 !! Local Variables:
 !! mode: f90

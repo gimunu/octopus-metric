@@ -17,7 +17,7 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: Makefile.am 14357 2015-06-23 23:26:35Z dstrubbe $
+## $Id: Makefile.am 15243 2016-03-28 21:18:08Z xavier $
 
 noinst_LIBRARIES = libmath.a
 
@@ -56,12 +56,13 @@ libmath_a_SOURCES =                      \
 	pblas.F90                        \
 	sgfft.F90                        \
 	matrix.F90                       \
+	matrix_ops.F90                   \
 	compressed_sensing.F90           \
 	fftw_low.c                       \
 	minimizer.F90                    \
         pnfft.F90                        \
 	qshep.F90                        \
-	sort.F90
+	spline_low.cc
 
 noinst_HEADERS =                         \
 	fft_inc.F90                      \
@@ -74,9 +75,9 @@ noinst_HEADERS =                         \
 	sparskit_inc.F90                 \
 	symm_op_inc.F90                  \
 	matrix_inc.F90                   \
+	matrix_ops_inc.F90               \
 	nfft_inc.F90                     \
-	pnfft_inc.F90                    \
-	sort_inc.F90
+	pnfft_inc.F90
 
 include $(srcdir)/../common-rules.make
 
@@ -96,7 +97,7 @@ nfft.o : nfft.F90 nfft_inc.F90 nfft_f.o fftw.o loct_math.o
 spline_filter.o: spline_filter.F90 splines.o
 gauss_legendre.o : gauss_legendre.F90 
 lalg_basic.o : lalg_basic.F90 lalg_basic_blas_inc.F90 blas.o 
-lalg_adv.o : lalg_adv.F90 lalg_adv_lapack_inc.F90 lapack.o scalapack.o sort.o
+lalg_adv.o : lalg_adv.F90 lalg_adv_lapack_inc.F90 lapack.o scalapack.o
 lapack.o : lapack.F90
 loct_math.o : loct_math.F90
 math.o : math.F90 math_inc.F90 lalg_basic.o loct_math.o blas.o
@@ -116,8 +117,8 @@ young.o : young.F90 math.o
 scalapack.o : scalapack.F90
 pblas.o : pblas.F90
 matrix.o : matrix.F90 matrix_inc.F90
+matrix_ops.o : matrix_ops.F90 matrix_ops_inc.F90 matrix.o lapack.o
 compressed_sensing.o : compressed_sensing.F90 blas.o
 minimizer.o : minimizer.F90 lalg_basic.o
 qshep.o : qshep.F90
-sort.o : sort.F90 sort_inc.F90
-
+spline_low.o : spline_low.cc

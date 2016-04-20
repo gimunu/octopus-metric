@@ -1,4 +1,4 @@
-!! Copyright (C) 2002-2006 M. Marques, A. Castro, A. Rubio, G. Bertsch
+!! Copyright (C) 2002-20016 M. Marques, A. Castro, A. Rubio, G. Bertsch, X. Andrade
 !!
 !! This program is free software; you can redistribute it and/or modify
 !! it under the terms of the GNU General Public License as published by
@@ -15,18 +15,19 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: messages.F90 14275 2015-06-17 18:31:51Z dstrubbe $
+!! $Id: messages.F90 15244 2016-03-29 20:08:03Z dstrubbe $
 
 #include "global.h"
 
-module messages_m
-  use global_m
-  use loct_m
-  use mpi_m
-  use parser_m
-  use string_m
-  use unit_m
-  use varinfo_m
+module messages_oct_m
+  use global_oct_m
+  use debug_oct_m
+  use loct_oct_m
+  use mpi_oct_m
+  use parser_oct_m
+  use string_oct_m
+  use unit_oct_m
+  use varinfo_oct_m
 
   implicit none
 
@@ -61,7 +62,9 @@ module messages_m
     messages_not_implemented,   &
     messages_new_line,          &
     messages_write,             &
-    messages_clean_path
+    messages_clean_path,        &
+    messages_dump_stack,        &
+    debug
 
   integer, parameter :: max_lines = 20
   character(len=256), dimension(max_lines), public :: message    !< to be output by fatal, warning
@@ -109,6 +112,8 @@ module messages_m
   integer :: experimentals
   integer :: current_line
 
+  type(debug_t), save :: debug
+  
 contains
 
   ! ---------------------------------------------------------
@@ -130,39 +135,15 @@ contains
     !% <a href=http://www.tddft.org/programs/octopus/experimental_features>wiki page</a>.
     !%End
     call parse_variable('ExperimentalFeatures', .false., conf%devel_version)
+    
+    call messages_obsolete_variable('DebugLevel', 'Debug')
 
-    !%Variable DebugLevel
-    !%Type integer
-    !%Default 0
-    !%Section Execution::Debug
-    !%Description
-    !% This variable decides whether or not to enter debug mode.
-    !% If it is greater than 0, different amounts of additional information
-    !% are written to standard output and additional assertion checks are performed.
-    !%Option 0
-    !% (default) <tt>Octopus</tt> does not enter debug mode.
-    !%Option 1
-    !% Moderate amount of debug output; assertion checks enabled.
-    !%Option 2
-    !% The code prints a stack trace as it enters end exits subroutines.
-    !% This is useful for developers and you should include this output when
-    !% submitting a bug report.
-    !%Option 99
-    !% The debug output is additionally written to files in the <tt>debug</tt>
-    !% directory. For each node (when running in parallel) there is a file called
-    !% <tt>debug_trace.&lt;rank&gt;</tt>. Writing these files slows down the code by a huge factor and
-    !% it is usually only necessary for parallel runs. In the serial case all
-    !% the information can be obtained from standard out.
-    !%End
-    call parse_variable('DebugLevel', 0, conf%debug_level)
-    if(conf%debug_level>0) then
-      in_debug_mode = .true.
-    else
-      in_debug_mode = .false.
-    end if
+    call debug_init(debug)
     
     warnings = 0
-    experimentals = 0    
+    experimentals = 0
+
+    call trap_segfault()
 
     call messages_reset_lines()
 
@@ -228,6 +209,7 @@ contains
     end if
 
     call parser_end()
+    call debug_end(debug)
   
   end subroutine messages_end
 
@@ -320,7 +302,7 @@ contains
     ! We only dump the stack in debug mode because subroutine invocations
     ! are only recorded in debug mode (via push_sub/pop_sub). Otherwise,
     ! it is a bit confusing that the stack seems to be empty.
-    if(in_debug_mode) then
+    if(debug%trace) then
       call flush_msg(stderr, shyphens)
 
       write(msg, '(a)') '* Stack: '
@@ -445,7 +427,7 @@ contains
     end if
 
     do il = 1, no_lines_
-      if(.not. present(verbose_limit) .or. in_debug_mode) then
+      if(.not. present(verbose_limit) .or. debug%info) then
         write(msg, '(a)') trim(message(il))
         call flush_msg(iu, msg)
       end if
@@ -471,7 +453,7 @@ contains
 
     integer             :: il, iunit
 
-    if(.not.in_debug_mode) return
+    if(.not. debug%info) return
 
     if(flush_messages .and. mpi_grp_is_root(mpi_world)) then
       open(unit=iunit_out, file='messages.stdout', &
@@ -498,7 +480,7 @@ contains
 
     integer             :: il, iunit
 
-    if(.not. in_debug_mode) return
+    if(.not. debug%info) return
     if(mpi_grp_is_root(mpi_world)) return
 
     if(flush_messages) then
@@ -522,7 +504,7 @@ contains
   subroutine messages_debug_marker(no)
     integer, intent(in) :: no
 
-    if(.not. in_debug_mode) return
+    if(.not. debug%info) return
 
     write(message(1), '(a,i3)') 'debug marker #', no
     call messages_debug(1)
@@ -947,7 +929,7 @@ contains
 
     integer iunit, sec, usec
 
-    if(.not. in_debug_mode) return
+    if(.not. debug%trace) return
 
     call loct_gettimeofday(sec, usec)
     call epoch_time_diff(sec, usec)
@@ -962,12 +944,14 @@ contains
     sub_stack(no_sub_stack)  = trim(messages_clean_path(sub_name))
     time_stack(no_sub_stack) = loct_clock()
 
-    if(conf%debug_level >= 99) then
+    if(debug%trace_file) then
       call open_debug_trace(iunit)
       call push_sub_write(iunit)
       ! close file to ensure flushing
       close(iunit)
-    else if(conf%debug_level > 1 .and. mpi_grp_is_root(mpi_world)) then
+    end if
+
+    if(debug%trace_term .and. mpi_grp_is_root(mpi_world)) then
       ! write to stderr if we are node 0
       call push_sub_write(stderr)
     end if
@@ -978,7 +962,7 @@ contains
       integer,  intent(in) :: iunit_out
 
       integer :: ii
-      character(len=200) :: tmpstr
+      character(len=1000) :: tmpstr
 
       write(tmpstr,'(a,i6,a,i6.6,f20.6,i8,a)') "* I ", &
         sec, '.', usec, &
@@ -1003,7 +987,7 @@ contains
 
     integer iunit, sec, usec
 
-    if(.not. in_debug_mode) return
+    if(.not. debug%trace) return
 
     call loct_gettimeofday(sec, usec)
     call epoch_time_diff(sec, usec)
@@ -1026,12 +1010,14 @@ contains
       call messages_fatal(3)
     end if
 
-    if(conf%debug_level >= 99) then
+    if(debug%trace_file) then
       call open_debug_trace(iunit)
       call pop_sub_write(iunit)
       ! close file to ensure flushing
       close(iunit)
-    else if (conf%debug_level > 1 .and. mpi_grp_is_root(mpi_world)) then
+    end if
+
+    if (debug%trace_term .and. mpi_grp_is_root(mpi_world)) then
       ! write to stderr if we are node 0
       call pop_sub_write(stderr)
     end if
@@ -1044,7 +1030,7 @@ contains
       integer, intent(in) :: iunit_out
 
       integer :: ii
-      character(len=200) :: tmpstr
+      character(len=1000) :: tmpstr
 
       write(tmpstr,'(a,i6,a,i6.6,f20.6,i8, a)') "* O ", &
         sec, '.', usec, &
@@ -1074,7 +1060,7 @@ contains
         write(message(2), '(a)') ' '
         write(message(3), '(a)') 'Equivalent functionality can be obtained with the '//trim(rep)
         write(message(4), '(a)') 'variable. Check the documentation for details.'
-        write(message(5), '(a)') '(You can use the `oct-help -s '//trim(rep)//'` command).'
+        write(message(5), '(a)') '(You can use the `oct-help -p '//trim(rep)//'` command).'
         call messages_fatal(5, only_root_writes = .true.)
       else
         call messages_fatal(1, only_root_writes = .true.)
@@ -1329,15 +1315,36 @@ contains
     clean_path = filename(start:)
   end function messages_clean_path
 
-end module messages_m
+  subroutine messages_dump_stack()
+
+    integer :: ii
+    
+    if(debug%trace) then
+      call flush_msg(stderr, shyphens)
+      
+      write(msg, '(a)') 'Octopus debug trace: '
+      call flush_msg(stderr, msg)
+      do ii = 1, no_sub_stack
+        write(msg, '(a,a)') ' > ', trim(sub_stack(ii))
+        call flush_msg(stderr, msg, 'no')
+      end do
+      call flush_msg(stderr, " ")
+    else
+      write(msg, '(a)') " Octopus debug trace not available. You can enable it with 'Debug = trace'."
+      call flush_msg(stderr, msg)
+    end if
+
+  end subroutine messages_dump_stack
+  
+end module messages_oct_m
 
 ! ---------------------------------------------------------
 !> This subroutine is called by the assert macro, it is not in a
 !> module so it can be called from any file. The interface is declared
 !> in global_m.
 subroutine assert_die(s, f, l)
-  use messages_m
-  use mpi_m
+  use messages_oct_m
+  use mpi_oct_m
 
   implicit none
 
@@ -1360,6 +1367,14 @@ subroutine assert_die(s, f, l)
 
 end subroutine assert_die
 
+!-------------------------------------------------------
+
+subroutine dump_call_stack()
+  use messages_oct_m
+
+  call messages_dump_stack()
+  
+end subroutine dump_call_stack
 
 
 !! Local Variables:

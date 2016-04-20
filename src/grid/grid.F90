@@ -15,34 +15,34 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: grid.F90 14321 2015-06-23 02:36:56Z dstrubbe $
+!! $Id: grid.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module grid_m
-  use cube_m
-  use curvilinear_m
-  use derivatives_m
-  use double_grid_m
-  use geometry_m
-  use global_m
-  use index_m
-  use io_m
-  use mesh_m
-  use mesh_init_m
-  use messages_m
-  use mpi_m
-  use multicomm_m
-  use multigrid_m
-  use nl_operator_m
-  use parser_m
-  use profiling_m
-  use space_m
-  use simul_box_m
-  use stencil_m
-  use stencil_cube_m
-  use unit_m
-  use unit_system_m
+module grid_oct_m
+  use cube_oct_m
+  use curvilinear_oct_m
+  use derivatives_oct_m
+  use double_grid_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use index_oct_m
+  use io_oct_m
+  use mesh_oct_m
+  use mesh_init_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use multicomm_oct_m
+  use multigrid_oct_m
+  use nl_operator_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use space_oct_m
+  use simul_box_oct_m
+  use stencil_oct_m
+  use stencil_cube_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
 
   implicit none
 
@@ -232,13 +232,8 @@ contains
 
     PUSH_SUB(grid_init_stage_2)
 
-    if(multicomm_strategy_is_parallel(mc, P_STRATEGY_DOMAINS)) then
-      call mpi_grp_init(grp, mc%group_comm(P_STRATEGY_DOMAINS))
-      call mesh_init_stage_3(gr%mesh, gr%stencil, grp)
-    else
-      call mpi_grp_init(grp, mc%group_comm(P_STRATEGY_DOMAINS))
-      call mesh_init_stage_3(gr%mesh, mpi_grp=grp)
-    end if
+    call mpi_grp_init(grp, mc%group_comm(P_STRATEGY_DOMAINS))
+    call mesh_init_stage_3(gr%mesh, gr%stencil, grp)
 
     call nl_operator_global_init()
     if(gr%have_fine_mesh) then
@@ -264,11 +259,7 @@ contains
       
       call derivatives_init(gr%fine%der, gr%mesh%sb, gr%cv%method /= CURV_METHOD_UNIFORM)
       
-      if(gr%mesh%parallel_in_domains) then
-        call mesh_init_stage_3(gr%fine%mesh, gr%stencil, gr%mesh%mpi_grp)
-      else
-        call mesh_init_stage_3(gr%fine%mesh)
-      end if
+      call mesh_init_stage_3(gr%fine%mesh, gr%stencil, gr%mesh%mpi_grp)
       
       call multigrid_get_transfer_tables(gr%fine%tt, gr%fine%mesh, gr%mesh)
       
@@ -343,7 +334,7 @@ contains
     PUSH_SUB(grid_write_info)
 
     if(.not.mpi_grp_is_root(mpi_world)) then
-      if(in_debug_mode) call messages_debug_newlines(6)
+      if(debug%info) call messages_debug_newlines(6)
       POP_SUB(grid_write_info)
       return
     end if
@@ -425,11 +416,7 @@ contains
 
     call grid_init_stage_1(grout, geo)
 
-    if(grin%mesh%parallel_in_domains) then
-      call mesh_init_stage_3(grout%mesh, grout%stencil, grin%mesh%mpi_grp)
-    else
-      call mesh_init_stage_3(grout%mesh)
-    end if
+    call mesh_init_stage_3(grout%mesh, grout%stencil, grin%mesh%mpi_grp)
 
     call derivatives_build(grout%der, grout%mesh)
 
@@ -439,7 +426,7 @@ contains
     POP_SUB(grid_create_largergrid)
   end subroutine grid_create_largergrid
 
-end module grid_m
+end module grid_oct_m
 
 !! Local Variables:
 !! mode: f90

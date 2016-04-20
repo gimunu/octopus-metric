@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: mpi_lib_inc.F90 11705 2014-02-01 00:11:56Z dstrubbe $
+!! $Id: mpi_lib_inc.F90 14790 2015-11-19 04:29:09Z xavier $
 
 
 ! ---------------------------------------------------------
@@ -34,7 +34,8 @@ subroutine X(lmpi_gen_allgatherv)(incount, in, outcount, out, mpi_grp)
   integer, allocatable :: rdispls(:), recvbuf(:), recvcnts(:)
 
   PUSH_SUB(X(lmpi_gen_allgatherv))
-
+  call profiling_in(prof_allgatherv, 'LMPI_GEN_ALLGATHERV')
+  
   SAFE_ALLOCATE( rdispls(1:mpi_grp%size))
   SAFE_ALLOCATE( recvbuf(1:mpi_grp%size))
   SAFE_ALLOCATE(recvcnts(1:mpi_grp%size))
@@ -66,6 +67,7 @@ subroutine X(lmpi_gen_allgatherv)(incount, in, outcount, out, mpi_grp)
   SAFE_DEALLOCATE_A(recvbuf)
   SAFE_DEALLOCATE_A(recvcnts)
 
+  call profiling_out(prof_allgatherv)
   POP_SUB(X(lmpi_gen_allgatherv))
 end subroutine X(lmpi_gen_allgatherv)
 

@@ -15,48 +15,48 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: td_write.F90 14739 2015-11-05 18:09:17Z xavier $
+!! $Id: td_write.F90 15258 2016-04-07 23:16:18Z xavier $
 
 #include "global.h"
 
-module td_write_m
+module td_write_oct_m
   use iso_c_binding
-  use excited_states_m
-  use gauge_field_m
-  use geometry_m
-  use global_m
-  use grid_m
-  use output_m
-  use hamiltonian_m
-  use io_m
-  use ion_dynamics_m
-  use kick_m
-  use lasers_m
-  use loct_m
-  use loct_math_m
-  use magnetic_m
-  use math_m
-  use mesh_function_m
-  use mesh_m
-  use messages_m
-  use mpi_m
-  use mpi_lib_m
-  use parser_m
-  use partial_charges_m
-  use pert_m
-  use profiling_m
-  use restart_m
-  use states_m
-  use states_calc_m
-  use states_dim_m
-  use states_restart_m
-  use td_calc_m
-  use types_m
-  use unit_m
-  use unit_system_m
-  use varinfo_m
-  use v_ks_m
-  use write_iter_m
+  use excited_states_oct_m
+  use gauge_field_oct_m
+  use geometry_oct_m
+  use global_oct_m
+  use grid_oct_m
+  use output_oct_m
+  use hamiltonian_oct_m
+  use io_oct_m
+  use ion_dynamics_oct_m
+  use kick_oct_m
+  use lasers_oct_m
+  use loct_oct_m
+  use loct_math_oct_m
+  use magnetic_oct_m
+  use math_oct_m
+  use mesh_function_oct_m
+  use mesh_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use mpi_lib_oct_m
+  use parser_oct_m
+  use partial_charges_oct_m
+  use pert_oct_m
+  use profiling_oct_m
+  use restart_oct_m
+  use states_oct_m
+  use states_calc_oct_m
+  use states_dim_oct_m
+  use states_restart_oct_m
+  use td_calc_oct_m
+  use types_oct_m
+  use unit_oct_m
+  use unit_system_oct_m
+  use varinfo_oct_m
+  use v_ks_oct_m
+  use write_iter_oct_m
 
   implicit none
 
@@ -1696,11 +1696,10 @@ contains
       write(buf, '(a15,i2)')      '# nspin        ', st%d%nspin
       call write_iter_string(out_eigs, buf)
       call write_iter_nl(out_eigs)
-      
 
       ! first line -> column names
       call write_iter_header_start(out_eigs)
-      do is = 1, st%d%nspin
+      do is = 1, st%d%kpt%nglobal
         do ii = 1, st%nst
           write(buf, '(a,i4)') 'Eigenvalue ',ii
           call write_iter_header(out_eigs, buf)
@@ -1711,7 +1710,7 @@ contains
       ! second line: units
       call write_iter_string(out_eigs, '#[Iter n.]')
       call write_iter_header(out_eigs, '[' // trim(units_abbrev(units_out%time)) // ']')
-      do is = 1, st%d%nspin
+      do is = 1, st%d%kpt%nglobal
         do ii = 1, st%nst
           call write_iter_header(out_eigs, '[' // trim(units_abbrev(units_out%energy)) // ']')
         end do
@@ -1721,7 +1720,7 @@ contains
     end if
 
     call write_iter_start(out_eigs)
-    do is = 1, st%d%nspin
+    do is = 1, st%d%kpt%nglobal
       do ii =1 , st%nst
         call write_iter_double(out_eigs, units_from_atomic(units_out%energy, eigs(ii,is)), 1)
       end do
@@ -2132,7 +2131,7 @@ contains
 
     integer :: idir, ispin
     character(len=50) :: aux
-    FLOAT :: total_current(1:MAX_DIM)
+    FLOAT :: total_current(1:MAX_DIM), abs_current(1:MAX_DIM)
 
     PUSH_SUB(td_write_total_current)
 
@@ -2144,6 +2143,11 @@ contains
       
       do idir = 1, gr%mesh%sb%dim
         write(aux, '(a2,i1,a1)') 'I(', idir, ')'
+        call write_iter_header(out_total_current, aux)
+      end do
+
+      do idir = 1, gr%mesh%sb%dim
+        write(aux, '(a2,i1,a1)') 'IntAbs(j)(', idir, ')'
         call write_iter_header(out_total_current, aux)
       end do
       
@@ -2162,9 +2166,18 @@ contains
       total_current(idir) = units_from_atomic(units_out%length/units_out%time, total_current(idir))
     end do
 
+    abs_current = CNST(0.0)
+    do idir = 1, gr%sb%dim
+      do ispin = 1, st%d%nspin
+        abs_current(idir) =  abs_current(idir) + dmf_integrate(gr%mesh, abs(st%current(:, idir, ispin)))
+      end do
+      abs_current(idir) = units_from_atomic(units_out%length/units_out%time, abs_current(idir))
+    end do
+
     if(mpi_grp_is_root(mpi_world)) then
       call write_iter_start(out_total_current)
       call write_iter_double(out_total_current, total_current, gr%mesh%sb%dim)
+      call write_iter_double(out_total_current, abs_current, gr%mesh%sb%dim)
       call write_iter_nl(out_total_current)
     end if
       
@@ -2251,7 +2264,7 @@ contains
     POP_SUB(td_write_print_header_end)
   end subroutine td_write_print_header_end
 
-end module td_write_m
+end module td_write_oct_m
 
 !! Local Variables:
 !! mode: f90

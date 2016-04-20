@@ -15,50 +15,50 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: derivatives.F90 14694 2015-10-23 09:26:52Z jrfsousa $
+!! $Id: derivatives.F90 15203 2016-03-19 13:15:05Z xavier $
 
 #include "global.h"
 
-module derivatives_m
-  use batch_m
-  use boundaries_m
+module derivatives_oct_m
+  use batch_oct_m
+  use boundaries_oct_m
 #ifdef HAVE_OPENCL
   use cl
 #endif
-  use global_m
-  use lalg_adv_m
-  use lalg_basic_m
-  use loct_m
-  use math_m
-  use mesh_m
-  use mesh_function_m
-  use messages_m
-  use mpi_m
-  use mpi_debug_m
-  use nl_operator_m
-  use opencl_m
-  use octcl_kernel_m
-  use par_vec_m
-  use parser_m
-  use profiling_m
-  use simul_box_m
-  use stencil_cube_m
-  use stencil_star_m
-  use stencil_starplus_m
-  use stencil_stargeneral_m
-  use stencil_variational_m
-  use test_parameters_m
-  use transfer_table_m
-  use types_m
-  use utils_m
-  use varinfo_m
+  use global_oct_m
+  use lalg_adv_oct_m
+  use lalg_basic_oct_m
+  use loct_oct_m
+  use math_oct_m
+  use mesh_oct_m
+  use mesh_function_oct_m
+  use messages_oct_m
+  use mpi_oct_m
+  use mpi_debug_oct_m
+  use nl_operator_oct_m
+  use opencl_oct_m
+  use octcl_kernel_oct_m
+  use par_vec_oct_m
+  use parser_oct_m
+  use profiling_oct_m
+  use simul_box_oct_m
+  use stencil_cube_oct_m
+  use stencil_star_oct_m
+  use stencil_starplus_oct_m
+  use stencil_stargeneral_oct_m
+  use stencil_variational_oct_m
+  use test_parameters_oct_m
+  use transfer_table_oct_m
+  use types_oct_m
+  use utils_oct_m
+  use varinfo_oct_m
 
 !   debug purposes 
-!   use io_binary_m
-!   use io_function_m
-!   use io_m
-!   use unit_m
-!   use unit_system_m
+!   use io_binary_oct_m
+!   use io_function_oct_m
+!   use io_oct_m
+!   use unit_oct_m
+!   use unit_system_oct_m
   
   implicit none
 
@@ -430,6 +430,7 @@ contains
       case(DER_STARPLUS)
         call stencil_starplus_get_grad(der%grad(ii)%stencil, der%dim, ii, der%order)
       case(DER_STARGENERAL)
+      ! use the simple star stencil
         call stencil_star_get_grad(der%grad(ii)%stencil, ii, der%order)
       end select
     end do
@@ -463,7 +464,7 @@ contains
     character(len=32) :: name
     type(nl_operator_t) :: auxop
     
-    type(test_parameters_t) :: test_param
+!     type(test_parameters_t) :: test_param
 
     PUSH_SUB(derivatives_build)
 
@@ -553,12 +554,18 @@ contains
     case(DER_STARGENERAL)    
     
       do i = 1, der%dim        
+        print * , der%op(i)%stencil%size
         SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(i)%stencil%size))
         SAFE_ALLOCATE(rhs(1:der%op(i)%stencil%size, 1:1))
+        ! use simple star stencil polynomials
         call stencil_star_polynomials_grad(i, der%order, polynomials)
         call get_rhs_grad(i, rhs(:, 1))
         name = index2axis(i) // "-gradient"
-!         call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, 1, der%op(i:i), name)
+        ! For directional derivatives the weights are the same as in the orthogonal case.
+        ! Forcing the orthogonal case avoid incurring in ill-defined cases.
+        ! NOTE: this is not so clean and also am not 100% sure is correct. It has to be tested. UDG
+        call derivatives_make_discretization(der%dim, der%mesh, der%masses, polynomials, rhs, 1,&
+                                              der%op(i:i), name, force_orthogonal = .true.)
         SAFE_DEALLOCATE_A(polynomials)
         SAFE_DEALLOCATE_A(rhs)
       end do
@@ -665,7 +672,7 @@ contains
 
 
   ! ---------------------------------------------------------
-  subroutine derivatives_make_discretization(dim, mesh, masses, pol, rhs, n, op, name)
+  subroutine derivatives_make_discretization(dim, mesh, masses, pol, rhs, n, op, name, force_orthogonal)
     integer,                intent(in)    :: dim
     type(mesh_t),           intent(in)    :: mesh
     FLOAT,                  intent(in)    :: masses(:)
@@ -674,6 +681,7 @@ contains
     FLOAT,                  intent(inout) :: rhs(:,:)
     type(nl_operator_t),    intent(inout) :: op(:)
     character(len=32),      intent(in)    :: name
+    logical, optional,      intent(in)    :: force_orthogonal
 
     integer :: p, p_max, i, j, k, pow_max
     FLOAT   :: x(MAX_DIM)
@@ -704,12 +712,10 @@ contains
         else
           forall(j = 1:dim) x(j) = real(op(1)%stencil%points(j, i), REAL_PRECISION)*mesh%spacing(j)
           ! TODO : this internal if clause is inefficient - the condition is determined globally
-          if (mesh%sb%nonorthogonal) x(1:dim) = matmul(mesh%sb%rlattice_primitive(1:dim,1:dim), x(1:dim))
+          if (mesh%sb%nonorthogonal .and. .not. optional_default(force_orthogonal, .false.))  & 
+              x(1:dim) = matmul(mesh%sb%rlattice_primitive(1:dim,1:dim), x(1:dim))
         end if
-        
-!         print *,i, x(:)
-!         write (99,*)  x(:)
-         
+                         
 ! NB: these masses are applied on the cartesian directions. Should add a check for non-orthogonal axes
         forall(j = 1:dim) x(j) = x(j)*sqrt(masses(j))
 
@@ -779,7 +785,7 @@ contains
 #include "complex_single.F90"
 #include "derivatives_inc.F90"
 
-end module derivatives_m
+end module derivatives_oct_m
 
 !! Local Variables:
 !! mode: f90
