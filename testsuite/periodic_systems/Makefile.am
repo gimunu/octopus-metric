@@ -17,7 +17,7 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: Makefile.am 12777 2015-01-29 21:41:45Z xavier $
+## $Id: Makefile.am 15291 2016-04-20 10:46:20Z umberto $
 
 sharedir = $(pkgdatadir)/testsuite/periodic_systems
 

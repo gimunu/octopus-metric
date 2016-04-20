@@ -18,7 +18,7 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: Makefile.am 14666 2015-10-11 00:48:22Z xavier $
+## $Id: Makefile.am 15289 2016-04-20 10:40:37Z umberto $
 
 noinst_LIBRARIES = libgrid.a
 
