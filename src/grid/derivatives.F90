@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: derivatives.F90 15289 2016-04-20 10:40:37Z umberto $
+!! $Id: derivatives.F90 15293 2016-04-20 13:22:49Z umberto $
 
 #include "global.h"
 
@@ -554,7 +554,6 @@ contains
     case(DER_STARGENERAL)    
     
       do i = 1, der%dim        
-        print * , der%op(i)%stencil%size
         SAFE_ALLOCATE(polynomials(1:der%dim, 1:der%op(i)%stencil%size))
         SAFE_ALLOCATE(rhs(1:der%op(i)%stencil%size, 1:1))
         ! use simple star stencil polynomials

@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: rdmft.F90 15203 2016-03-19 13:15:05Z xavier $
+!! $Id: rdmft.F90 15401 2016-06-03 11:52:14Z theophilou $
 
 #include "global.h"
 
@@ -64,7 +64,7 @@ module rdmft_oct_m
     integer  :: max_iter
     integer  :: iter
     FLOAT    :: mu, occsum, qtot, scale_f, toler, conv_ener, maxFO
-    FLOAT, allocatable   :: eone(:), hartree(:,:), exchange(:,:), evalues(:)   
+    FLOAT, allocatable   :: eone(:), eone_int(:,:), twoint(:), hartree(:,:), exchange(:,:), evalues(:)   
 
     !>shortcuts
     type(states_t),   pointer :: st
@@ -170,7 +170,7 @@ contains
         call scf_orb(rdm, gr, geo, st, ks, hm, energy)
         energy_dif = energy - energy_old
         energy_old = energy
-        if (abs(energy_dif).lt. rdm%conv_ener)  exit
+        if (abs(energy_dif).lt. rdm%conv_ener.and.rdm%maxFO < 1.d3*rdm%conv_ener)  exit
         if (energy_dif < M_ZERO) then
           xneg = xneg + 1
         else
@@ -666,17 +666,9 @@ contains
     type(grid_t),         intent(in)    :: gr
     FLOAT,                intent(in)    :: lambda(:, :)
     
-    type(states_t)   :: psi2
-    FLOAT, allocatable :: occ(:,:), psii(:, :), psij(:, :)
-    integer :: ist, jst, iqn
+    integer :: iqn
 
     PUSH_SUB(assign_eigenfunctions)
-    
-    SAFE_ALLOCATE(occ(1:st%nst,1:st%d%nik))
-
-    occ = M_ZERO
-
-    call states_copy(psi2, st)
 
     do iqn = st%d%kpt%start, st%d%kpt%end
       if(states_are_real(st)) then
@@ -685,39 +677,6 @@ contains
         call states_rotate(gr%mesh, st, M_z1*lambda, iqn)
       end if
     end do
-    
-   ! reordering occupation numbers if needed
-    occ = st%occ
-
-    SAFE_ALLOCATE(psii(1:gr%mesh%np, 1:st%d%dim))
-    SAFE_ALLOCATE(psij(1:gr%mesh%np, 1:st%d%dim))
-    
-    do ist = 1, st%nst
-      call states_get_state(st, gr%mesh, ist, 1, psii)
-      call states_get_state(psi2, gr%mesh, ist, 1, psij)
-      
-      if (abs(dmf_dotp(gr%mesh, st%d%dim, psii, psij)) < M_HALF) then
-        
-        do jst = 1, st%nst
-          call states_get_state(psi2, gr%mesh, jst, 1, psij)
-          
-          if (abs(dmf_dotp(gr%mesh, st%d%dim, psii, psij)) >= M_HALF) then
-            occ(ist, 1) = st%occ(jst, 1)
-          end if 
-
-        end do
-        
-      end if
-
-    end do
-
-    SAFE_DEALLOCATE_A(psii)
-    SAFE_DEALLOCATE_A(psij)
-    
-  
-    call states_end(psi2) 
-
-    SAFE_DEALLOCATE_A(occ)
     
     POP_SUB(assign_eigenfunctions)
 
@@ -845,6 +804,130 @@ contains
 
   end subroutine rdm_derivatives
 
+  subroutine rdm_integrals(rdm, hm, st, gr)
+    type(rdm_t),          intent(inout) :: rdm
+    type(hamiltonian_t),  intent(in)    :: hm 
+    type(states_t),       intent(in)    :: st 
+    type(grid_t),         intent(inout) :: gr
+    
+    FLOAT, allocatable :: hpsi(:,:), rho(:), rho1(:), rho2(:), rho3(:), rho4(:), rho5(:), rho6(:)
+    FLOAT, allocatable :: dpsi(:,:), dpsi2(:,:), dpsi3(:,:), dpsi4(:,:)
+    FLOAT, allocatable :: v_ij(:,:,:)
+    FLOAT, allocatable :: lxc(:, :, :) !required input variable for doep_x, not used otherwise, might get used
+    FLOAT              :: ex !required input variable for doep_x, not used otherwise, might get used
+
+    integer :: ist, jst, kst, lst, nspin_, is, jdm,  icount
+
+    PUSH_SUB(rdm_integrals)
+ 
+    nspin_ = min(st%d%nspin, 2)
+    
+    SAFE_ALLOCATE(rho(1:gr%mesh%np))
+    SAFE_ALLOCATE(rho1(1:gr%mesh%np))
+    SAFE_ALLOCATE(rho2(1:gr%mesh%np))
+    SAFE_ALLOCATE(rho3(1:gr%mesh%np))
+    SAFE_ALLOCATE(rho4(1:gr%mesh%np))
+    SAFE_ALLOCATE(rho5(1:gr%mesh%np))
+    SAFE_ALLOCATE(rho6(1:gr%mesh%np))
+    SAFE_ALLOCATE(dpsi(1:gr%mesh%np_part, 1:st%d%dim))
+    SAFE_ALLOCATE(dpsi2(1:gr%mesh%np_part, 1:st%d%dim))
+    SAFE_ALLOCATE(dpsi3(1:gr%mesh%np_part, 1:st%d%dim))
+    SAFE_ALLOCATE(dpsi4(1:gr%mesh%np_part, 1:st%d%dim))
+    SAFE_ALLOCATE(v_ij(1:gr%der%mesh%np, 1:st%nst, 1:st%nst))
+    SAFE_ALLOCATE(lxc(1:gr%mesh%np, st%st_start:st%st_end, 1:nspin_))
+    
+    
+    lxc = M_ZERO
+    v_ij = M_ZERO
+    
+    do is = 1, nspin_
+      do jdm = 1, st%d%dim
+        call doep_x(gr%der, st, is, jdm, lxc, ex, 1.d0, v_ij)
+      end do
+    end do
+
+
+  !calculate integrals of the one-electron energy term with respect to the initial orbital basis
+    do ist = 1, st%nst
+      call states_get_state(st, gr%mesh, ist, 1, dpsi)
+      do jst = ist, st%nst
+        call states_get_state(st, gr%mesh, jst, 1, dpsi2)
+        call dhamiltonian_apply(hm,gr%der, dpsi, hpsi, ist, 1, &
+                              terms = TERM_KINETIC + TERM_LOCAL_EXTERNAL + TERM_NON_LOCAL_POTENTIAL)
+        rdm%eone_int(jst, ist) = dmf_dotp(gr%mesh, dpsi2(:, 1), hpsi(:, 1))
+        rdm%eone_int(ist, jst) = rdm%eone_int(jst, ist)
+      end do
+    end do
+
+    SAFE_DEALLOCATE_A(hpsi)
+
+    ! calculate unique two electron integrals <ij|kl> in the basis of the initial orbitals
+    
+    icount = 1
+    do ist = 1, st%nst 
+       call states_get_state(st, gr%mesh, ist, 1, dpsi)
+       rho1(1:gr%mesh%np) = dpsi(1:gr%mesh%np, 1)**2
+       rdm%twoint(icount) = dmf_dotp(gr%mesh, rho1, v_ij(:,ist, ist))  !<ii|ii>
+       icount = icount + 1 
+       do jst = ist + 1, st%nst  
+         call states_get_state(st, gr%mesh, jst, 1, dpsi2)
+         rho2(1:gr%mesh%np) = dpsi2(1:gr%mesh%np, 1)**2
+         rdm%twoint(icount) = dmf_dotp(gr%mesh, rho2, v_ij(:,ist, ist))  !<jj|ii>
+         icount = icount + 1  
+         rdm%twoint(icount) = dmf_dotp(gr%mesh, rho2, v_ij(:,ist, jst))  !<jj|ij>
+         icount = icount + 1  
+         rdm%twoint(icount) = dmf_dotp(gr%mesh, rho1, v_ij(:,jst, ist))  !<ii|ji>
+         icount = icount + 1  
+         rho3(1:gr%mesh%np) = dpsi2(1:gr%mesh%np, 1)*dpsi(1:gr%mesh%np, 1)
+         rdm%twoint(icount) = dmf_dotp(gr%mesh, rho3, v_ij(:,ist, jst))  !<ij|ij>
+         icount = icount + 1  
+         do kst = jst + 1, st%nst 
+           call states_get_state(st, gr%mesh, kst, 1, dpsi3)
+           rdm%twoint(icount) = dmf_dotp(gr%mesh, rho1, v_ij(:,jst, kst)) !<ii|jk>
+           icount = icount + 1
+           rdm%twoint(icount) = dmf_dotp(gr%mesh, rho2, v_ij(:,ist, kst)) !<jj|ik>
+           icount = icount + 1
+           rdm%twoint(icount) = dmf_dotp(gr%mesh, rho3, v_ij(:,kst, kst)) !<kk|ij> 
+           icount = icount + 1
+           rdm%twoint(icount) = dmf_dotp(gr%mesh, rho3, v_ij(:,ist, kst))  !<ij|ik>
+           icount = icount + 1
+           rdm%twoint(icount) = dmf_dotp(gr%mesh, rho3, v_ij(:,jst, kst))  !<ji|jk>
+           icount = icount + 1
+           rho4(1:gr%mesh%np) = dpsi3(1:gr%mesh%np, 1)*dpsi(1:gr%mesh%np, 1)
+           rdm%twoint(icount) = dmf_dotp(gr%mesh, rho4, v_ij(:,kst, jst))  !<ki|kj>
+           icount = icount + 1
+           do lst = kst + 1, st%nst
+             call states_get_state(st, gr%mesh, lst, 1, dpsi4)
+             rho5(1:gr%mesh%np) = dpsi4(1:gr%mesh%np, 1)*dpsi3(1:gr%mesh%np, 1)
+             rdm%twoint(icount) = dmf_dotp(gr%mesh, rho5, v_ij(:,ist, jst))  !<ij|kl>
+             icount = icount + 1
+             rdm%twoint(icount) = dmf_dotp(gr%mesh, rho4, v_ij(:,jst, lst))  !<ik|jl>
+             icount = icount + 1
+             rho6(1:gr%mesh%np) = dpsi4(1:gr%mesh%np, 1)*dpsi(1:gr%mesh%np, 1)
+             rdm%twoint(icount) = dmf_dotp(gr%mesh, rho6, v_ij(:,jst, kst))  !<il|jk>
+             icount = icount + 1
+          end do
+        end do
+      end do
+    end do
+    
+    SAFE_DEALLOCATE_A(rho1)
+    SAFE_DEALLOCATE_A(rho2)
+    SAFE_DEALLOCATE_A(rho3)
+    SAFE_DEALLOCATE_A(rho4)
+    SAFE_DEALLOCATE_A(rho5)
+    SAFE_DEALLOCATE_A(rho6)
+    SAFE_DEALLOCATE_A(dpsi)
+    SAFE_DEALLOCATE_A(dpsi2)
+    SAFE_DEALLOCATE_A(dpsi3)
+    SAFE_DEALLOCATE_A(dpsi4)
+    SAFE_DEALLOCATE_A(lxc)
+    SAFE_DEALLOCATE_A(v_ij)
+
+    POP_SUB(rdm_integrals) 
+
+  end subroutine rdm_integrals
+
 end module rdmft_oct_m
 
 
@@ -852,4 +935,7 @@ end module rdmft_oct_m
 !! mode: f90
 !! coding: utf-8
 !! End:
+
+
+
 

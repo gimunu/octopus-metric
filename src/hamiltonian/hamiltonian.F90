@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: hamiltonian.F90 15262 2016-04-08 21:13:28Z xavier $
+!! $Id: hamiltonian.F90 15387 2016-05-27 11:28:05Z micael $
 
 #include "global.h"
 
@@ -112,8 +112,6 @@ module hamiltonian_oct_m
     zexchange_operator_single,       &
     dscdm_exchange_operator,         &
     zscdm_exchange_operator,         &
-    dhamiltonian_phase,              &
-    zhamiltonian_phase,              &
     zhamiltonian_dervexternal,       &
     zhamiltonian_apply_atom,         &
     hamiltonian_dump_vhxc,           &
@@ -178,9 +176,6 @@ module hamiltonian_oct_m
     !> There may also be a exchange-like term, similar to the one necessary for time-dependent
     !! Hartree Fock, also useful only for the OCT equations
     type(oct_exchange_t) :: oct_exchange
-
-    CMPLX, pointer :: phase(:, :)
-    type(opencl_mem_t) :: buff_phase
 
     FLOAT :: current_time
     FLOAT :: Imcurrent_time  !< needed when cmplxscl%time = .true.
@@ -427,7 +422,7 @@ contains
 
     hm%adjoint = .false.
 
-    nullify(hm%phase)
+    nullify(hm%hm_base%phase)
     if (simul_box_is_periodic(gr%sb) .and. &
         .not. (kpoints_number(gr%sb%kpoints) == 1 .and. kpoints_point_is_gamma(gr%sb%kpoints, 1))) &
       call init_phase()
@@ -500,20 +495,21 @@ contains
 
       PUSH_SUB(hamiltonian_init.init_phase)
 
-      SAFE_ALLOCATE(hm%phase(1:gr%mesh%np_part, hm%d%kpt%start:hm%d%kpt%end))
+      SAFE_ALLOCATE(hm%hm_base%phase(1:gr%mesh%np_part, hm%d%kpt%start:hm%d%kpt%end))
 
       kpoint(1:gr%sb%dim) = M_ZERO
       do ik = hm%d%kpt%start, hm%d%kpt%end
         kpoint(1:gr%sb%dim) = kpoints_get_point(gr%sb%kpoints, states_dim_get_kpoint_index(hm%d, ik))
         forall (ip = 1:gr%mesh%np_part)
-          hm%phase(ip, ik) = exp(-M_zI * sum(gr%mesh%x(ip, 1:gr%sb%dim) * kpoint(1:gr%sb%dim)))
+          hm%hm_base%phase(ip, ik) = exp(-M_zI * sum(gr%mesh%x(ip, 1:gr%sb%dim) * kpoint(1:gr%sb%dim)))
         end forall
       end do
 
 #ifdef HAVE_OPENCL
       if(opencl_is_enabled()) then
-        call opencl_create_buffer(hm%buff_phase, CL_MEM_READ_ONLY, TYPE_CMPLX, gr%mesh%np_part*hm%d%kpt%nlocal)
-        call opencl_write_buffer(hm%buff_phase, gr%mesh%np_part*hm%d%kpt%nlocal, hm%phase)
+        call opencl_create_buffer(hm%hm_base%buff_phase, CL_MEM_READ_ONLY, TYPE_CMPLX, gr%mesh%np_part*hm%d%kpt%nlocal)
+        call opencl_write_buffer(hm%hm_base%buff_phase, gr%mesh%np_part*hm%d%kpt%nlocal, hm%hm_base%phase)
+        hm%hm_base%buff_phase_qn_start = hm%d%kpt%start
       end if
 #endif 
 
@@ -534,12 +530,12 @@ contains
     nullify(hm%subsys_hm)
     
 #ifdef HAVE_OPENCL
-    if(associated(hm%phase) .and. opencl_is_enabled()) then
-      call opencl_release_buffer(hm%buff_phase)
+    if(associated(hm%hm_base%phase) .and. opencl_is_enabled()) then
+      call opencl_release_buffer(hm%hm_base%buff_phase)
     end if
 #endif
 
-    SAFE_DEALLOCATE_P(hm%phase)
+    SAFE_DEALLOCATE_P(hm%hm_base%phase)
     SAFE_DEALLOCATE_P(hm%vhartree)
     SAFE_DEALLOCATE_P(hm%vhxc)
     SAFE_DEALLOCATE_P(hm%vxc)
@@ -557,7 +553,7 @@ contains
       SAFE_DEALLOCATE_P(hm%vtau)
     end if
 
-    call epot_end(hm%ep, hm%geo)
+    call epot_end(hm%ep)
     nullify(hm%geo)
 
     call bc_end(hm%bc)
@@ -707,9 +703,6 @@ contains
     call hamiltonian_base_allocate(this%hm_base, mesh, FIELD_POTENTIAL, &
       complex_potential = this%cmplxscl%space .or. this%bc%abtype == IMAGINARY_ABSORBING)
 
-    if(this%d%nspin > 2 .and. this%bc%abtype == IMAGINARY_ABSORBING) then
-      call messages_not_implemented('AbsorbingBoundaries = cap for spinors')
-    end if
 
     do ispin = 1, this%d%nspin
       if(ispin <= 2) then
@@ -728,15 +721,21 @@ contains
               this%hm_base%Impotential(ip, ispin) + this%Imvhxc(ip, ispin) +  this%ep%Imvpsl(ip)
           end forall
         end if
-      else
+        
+        if(this%bc%abtype == IMAGINARY_ABSORBING) then
+          forall (ip = 1:mesh%np)
+            this%hm_base%Impotential(ip, ispin) = this%hm_base%Impotential(ip, ispin) + this%bc%mf(ip)
+          end forall
+        end if
+
+      else !Spinors 
         forall (ip = 1:mesh%np) this%hm_base%potential(ip, ispin) = this%vhxc(ip, ispin)
+        if(this%cmplxscl%space) then
+          forall (ip = 1:mesh%np) this%hm_base%Impotential(ip, ispin) = this%Imvhxc(ip, ispin)
+        end if
+          
       end if
 
-      if(this%bc%abtype == IMAGINARY_ABSORBING) then
-        forall (ip = 1:mesh%np)
-          this%hm_base%Impotential(ip, ispin) = this%hm_base%Impotential(ip, ispin) + this%bc%mf(ip)
-        end forall
-      end if
 
     end do
 
@@ -831,11 +830,11 @@ contains
       end if
 
       if(allocated(this%hm_base%uniform_vector_potential)) then
-        if(.not. associated(this%phase)) then
-          SAFE_ALLOCATE(this%phase(1:mesh%np_part, this%d%kpt%start:this%d%kpt%end))
+        if(.not. associated(this%hm_base%phase)) then
+          SAFE_ALLOCATE(this%hm_base%phase(1:mesh%np_part, this%d%kpt%start:this%d%kpt%end))
           if(opencl_is_enabled()) then
 #ifdef HAVE_OPENCL
-            call opencl_create_buffer(this%buff_phase, CL_MEM_READ_ONLY, TYPE_CMPLX, mesh%np_part*this%d%kpt%nlocal)
+            call opencl_create_buffer(this%hm_base%buff_phase, CL_MEM_READ_ONLY, TYPE_CMPLX, mesh%np_part*this%d%kpt%nlocal)
 #endif
           end if
         end if
@@ -845,13 +844,13 @@ contains
           kpoint(1:mesh%sb%dim) = kpoints_get_point(mesh%sb%kpoints, states_dim_get_kpoint_index(this%d, ik))
 
           forall (ip = 1:mesh%np_part)
-            this%phase(ip, ik) = exp(-M_zI*sum(mesh%x(ip, 1:mesh%sb%dim)*(kpoint(1:mesh%sb%dim) &
+            this%hm_base%phase(ip, ik) = exp(-M_zI*sum(mesh%x(ip, 1:mesh%sb%dim)*(kpoint(1:mesh%sb%dim) &
               + this%hm_base%uniform_vector_potential(1:mesh%sb%dim))))
           end forall
         end do
         if(opencl_is_enabled()) then
 #ifdef HAVE_OPENCL
-          call opencl_write_buffer(this%buff_phase, mesh%np_part*this%d%kpt%nlocal, this%phase)
+          call opencl_write_buffer(this%hm_base%buff_phase, mesh%np_part*this%d%kpt%nlocal, this%hm_base%phase)
 #endif
         end if
       end if
@@ -860,7 +859,7 @@ contains
       nmat = this%hm_base%nprojector_matrices
 
 
-      if(associated(this%phase) .and. allocated(this%hm_base%projector_matrices)) then
+      if(associated(this%hm_base%phase) .and. allocated(this%hm_base%projector_matrices)) then
 
         if(.not. allocated(this%hm_base%projector_phases)) then
           SAFE_ALLOCATE(this%hm_base%projector_phases(1:max_npoints, nmat, this%d%kpt%start:this%d%kpt%end))

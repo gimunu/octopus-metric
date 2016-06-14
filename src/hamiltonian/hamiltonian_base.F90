@@ -15,12 +15,13 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: hamiltonian_base.F90 15257 2016-04-07 15:23:21Z xavier $
+!! $Id: hamiltonian_base.F90 15367 2016-05-16 17:47:49Z xavier $
 
 #include "global.h"
 
 module hamiltonian_base_oct_m
   use batch_oct_m
+  use batch_ops_oct_m
   use blas_oct_m
 #ifdef HAVE_OPENCL
   use cl
@@ -74,6 +75,8 @@ module hamiltonian_base_oct_m
     zhamiltonian_base_nlocal_start,            &
     dhamiltonian_base_nlocal_finish,           &
     zhamiltonian_base_nlocal_finish,           &
+    dhamiltonian_base_nlocal_position_commutator, &
+    zhamiltonian_base_nlocal_position_commutator, &
     hamiltonian_base_has_magnetic,             &
     hamiltonian_base_init,                     &
     hamiltonian_base_end,                      &
@@ -81,6 +84,8 @@ module hamiltonian_base_oct_m
     hamiltonian_base_clear,                    &
     hamiltonian_base_build_proj,               &
     hamiltonian_base_update,                   &
+    dhamiltonian_base_phase,                   &
+    zhamiltonian_base_phase,                   &
     dhamiltonian_base_nlocal_force,            &
     zhamiltonian_base_nlocal_force,            &
     projection_t
@@ -117,6 +122,10 @@ module hamiltonian_base_oct_m
     type(opencl_mem_t)                    :: buff_pos
     type(opencl_mem_t)                    :: buff_invmap
     type(opencl_mem_t)                    :: buff_projector_phases
+
+    CMPLX, pointer     :: phase(:, :)
+    type(opencl_mem_t) :: buff_phase
+    integer            :: buff_phase_qn_start
   end type hamiltonian_base_t
 
   type projection_t
@@ -519,7 +528,10 @@ contains
           end do
         end do
 
-        forall(ip = 1:pmat%npoints) pmat%map(ip) = epot%proj(iatom)%sphere%map(ip)
+        forall(ip = 1:pmat%npoints)
+          pmat%map(ip) = epot%proj(iatom)%sphere%map(ip)
+          pmat%position(1:3, ip) = epot%proj(iatom)%sphere%x(ip, 1:3)
+        end forall
 
         INCR(this%full_projection_size, pmat%nprojs)
 

@@ -15,11 +15,12 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: pes_flux.F90 15251 2016-04-01 07:39:30Z umberto $
+!! $Id: pes_flux.F90 15356 2016-05-11 15:55:54Z philipp $
 
 #include "global.h"
 
 module pes_flux_oct_m
+  use boundary_op_oct_m
   use comm_oct_m
   use derivatives_oct_m
   use global_oct_m
@@ -82,7 +83,7 @@ module pes_flux_oct_m
     integer          :: nsrfcpnts_start, nsrfcpnts_end !< for cubic surface: number of surface points on node
     FLOAT, pointer   :: srfcnrml(:,:)                  !< vectors normal to the surface (includes surface element)
     FLOAT, pointer   :: rcoords(:,:)                   !< coordinates of the surface points
-    integer, pointer :: srfcpnt(:)                     !< for cubic surface: returns index of the surface points
+    integer, pointer :: srfcpnt(:)                     !< for cubic surface: returns local index of the surface points
     integer, pointer :: rankmin(:)                     !< for cubic surface: returns node which has the surface point
     integer          :: lmax                           !< for spherical surface
     CMPLX, pointer   :: ylm_r(:,:,:)                   !< for spherical surface
@@ -107,8 +108,10 @@ module pes_flux_oct_m
 
     integer          :: ll(3)                          !< the dimensions of a cubic mesh containing the momentum-space
                                                        !< mesh. Used when working with semi-periodic systems 
+    integer          :: ngpt                           !< Number of free Gpoints use to increase resoltion                        
 
     logical          :: usememory                      !< whether conjgplanewf should be kept in memory
+    logical          :: avoid_ab
     type(mesh_interpolation_t) :: interp
       
     logical          :: parallel_in_momentum           !< whether we are parallelizing over the k-mesh  
@@ -236,7 +239,20 @@ contains
       call messages_print_var_value(stdout, 'PES_Flux_Lmax', this%lmax)
     end if
 
+    this%avoid_ab = .false.
     if(this%shape == M_CUBIC .or. this%shape == M_PLANES) then
+      if(hm%bc%abtype /= NOT_ABSORBING) then
+        !%Variable PES_Flux_AvoidAB
+        !%Type logical
+        !%Default yes
+        !%Section Time-Dependent::PhotoElectronSpectrum
+        !%Description
+        !% For PES_Flux_Shape = cub, checks whether surface points are inside the 
+        !% absorbing zone and discards them if set to yes (default).
+        !%End
+        call parse_variable('PES_Flux_AvoidAB', .true., this%avoid_ab)
+        call messages_print_var_value(stdout, 'PES_Flux_AvoidAB', this%avoid_ab)
+      end if
 
       !%Variable PES_Flux_Lsize
       !%Type block
@@ -347,7 +363,7 @@ contains
     ! Get the surface points
     ! -----------------------------------------------------------------
     if(this%shape == M_CUBIC .or. this%shape == M_PLANES) then
-      call pes_flux_getcube(this, mesh, border, offset)
+      call pes_flux_getcube(this, mesh, hm, border, offset)
     else
       call mesh_interpolation_init(this%interp, mesh)
       ! equispaced grid in theta & phi (Gauss-Legendre would optimize to nstepsthetar = this%lmax & nstepsphir = 2*this%lmax + 1):
@@ -359,14 +375,14 @@ contains
     ! distribute the surface points on nodes,
     ! since mesh domains may have different numbers of surface points.
     call pes_flux_distribute(1, this%nsrfcpnts, this%nsrfcpnts_start, this%nsrfcpnts_end, mesh%mpi_grp%comm)
+    if(debug%info) then
 #if defined(HAVE_MPI)
-    call MPI_Barrier(mpi_world%comm, mpi_err)
-    if (debug%info .and. mpi_grp_is_root(mpi_world)) then
+      call MPI_Barrier(mpi_world%comm, mpi_err)
       write(*,*) &
-        'Number of surface points on node ', mesh%mpi_grp%rank, ' : ', this%nsrfcpnts_start, this%nsrfcpnts_end
-    end if  
-    call MPI_Barrier(mpi_world%comm, mpi_err)    
+        'Debug: surface points on node ', mpi_world%rank, ' : ', this%nsrfcpnts_start, this%nsrfcpnts_end
+      call MPI_Barrier(mpi_world%comm, mpi_err)
 #endif
+    end if
 
     if(this%shape == M_PLANES) then
       this%nsrfcpnts_start = 1
@@ -374,12 +390,10 @@ contains
     end if
       
     if(debug%info .and. mpi_grp_is_root(mpi_world)) then
-      write(message(1),'(a, i6)') 'Info: Number of surface points, and normals (total):', this%nsrfcpnts
-      call messages_info(1) 
       do isp = 1, this%nsrfcpnts
         write(223,*) isp, this%rcoords(:, isp), this%srfcnrml(:,isp)
       end do
-      flush(223)
+      if(this%nsrfcpnts > 0) flush(223)
     end if
 
     ! get the values of the spherical harmonics for the surface points for M_SPHERICAL
@@ -427,14 +441,12 @@ contains
     !%Section Time-Dependent::PhotoElectronSpectrum
     !%Description
     !% Use memory to tabulate Volkov plane-wave components on the surface.
-    !% This option speeds up calculations precomputing plane wave phases on 
-    !% the suface. 
+    !% This option speeds up calculations by precomputing plane wave phases 
+    !% on the suface. 
     !% By default true when PES_Flux_Shape = cub.
     !%End
-    if(this%shape == M_CUBIC) then
-      call parse_variable('PES_Flux_UseMemory', .true., this%usememory)
-      call messages_print_var_value(stdout, "PES_Flux_UseMemory", this%usememory)            
-    end if
+    call parse_variable('PES_Flux_UseMemory', .true., this%usememory)
+    call messages_print_var_value(stdout, "PES_Flux_UseMemory", this%usememory)            
 
     SAFE_ALLOCATE(this%wf(stst:stend, 1:sdim, kptst:kptend, 0:this%nsrfcpnts, 1:this%tdsteps))
     this%wf = M_z0
@@ -481,6 +493,14 @@ contains
 
       end if
     end if
+
+    call messages_write('Info: Total number of surface points = ')
+    call messages_write(this%nsrfcpnts)
+    call messages_info() 
+
+    call messages_write('Info: Total number of momentum points =  ')
+    call messages_write(this%nkpnts)
+    call messages_info()
 
     POP_SUB(pes_flux_init)
   end subroutine pes_flux_init
@@ -530,7 +550,7 @@ contains
 
     integer           :: mdim, pdim
     integer           :: kptst, kptend  
-    integer           :: isp, ikp, ikpt, ibz1,ibz2
+    integer           :: isp, ikp, ikpt, ibz1, ibz2
     integer           :: il, ll, mm, idim
     integer           :: ikk, ith, iph, iomk
     FLOAT             :: kmax, kmin, kact, thetak, phik
@@ -538,18 +558,18 @@ contains
       
     FLOAT             :: Emin, Emax, DE , kvec(1:3) 
     integer           :: NBZ(1:2), nkp_out, nkmin, nkmax
+    
+    integer             :: ig
+    FLOAT, allocatable  :: gpoints(:,:), gpoints_reduced(:,:)
+    FLOAT               :: dk(1:3)
       
-#if defined(HAVE_MPI)
-    integer           :: mpirank
-#endif
-
     PUSH_SUB(pes_flux_reciprocal_mesh_gen)  
 
     kptst  = st%d%kpt%start
     kptend = st%d%kpt%end
     mdim   = sb%dim
     pdim   = sb%periodic_dim
-    
+
     
     if (this%shape == M_SPHERICAL .or. this%shape == M_CUBIC) then
       ! -----------------------------------------------------------------
@@ -631,6 +651,32 @@ contains
 
     else 
       ! PLANES 
+
+      !%Variable PES_Flux_Gpoint_Upsample
+      !%Type integer
+      !%Section Time-Dependent::PhotoElectronSpectrum
+      !%Description
+      !% Increase resolution in momentum by adding Gpoints in between adiacent 
+      !% Kpoints. For each additional Gpoint G an entire Kpoint grid centered at 
+      !% G is added to the momentum grid. 
+      !%End
+      call parse_variable('PES_Flux_Gpoint_Upsample', 1, this%ngpt)
+      call messages_print_var_value(stdout, "PES_Flux_Gpoint_Upsample", this%ngpt)
+      
+      SAFE_ALLOCATE(gpoints(1:mdim,1:this%ngpt))
+      SAFE_ALLOCATE(gpoints_reduced(1:mdim,1:this%ngpt)) 
+      
+      gpoints(:,:) = M_ZERO
+      gpoints_reduced(:,:) = M_ZERO
+      
+      dk(1:mdim) = M_ONE/(sb%kpoints%nik_axis(1:mdim) * this%ngpt)
+      do ig =2, this%ngpt
+        gpoints_reduced(1:pdim, ig) = gpoints_reduced(1:pdim, ig-1) + dk(1:pdim)
+        call kpoints_to_absolute(sb%klattice, gpoints_reduced(1:pdim, ig), gpoints(1:pdim, ig), pdim)
+        print *, ig," gpoints_reduced(1:pdim, ig) =", gpoints_reduced(1:pdim, ig)
+        print *, ig," gpoints(1:pdim, ig) =", gpoints(1:pdim, ig)
+      end do 
+      
       
       !%Variable PES_Flux_ARPES_grid
       !%Type logical
@@ -722,7 +768,7 @@ contains
       !%End
     
       NBZ(:) = 1
-      NBZ(1:pdim) = 2
+      if (.not. kpoints_have_zero_weight_path(sb%kpoints)) NBZ(1:pdim) = 2
       if(parse_block('PES_Flux_BZones', blk) == 0) then
 
         call parse_block_integer(blk, 0, 0, NBZ(1))
@@ -731,17 +777,21 @@ contains
         call parse_block_end(blk)
 
       else
-        call parse_variable('PES_Flux_BZones', 2, NBZ(1))
+        call parse_variable('PES_Flux_BZones', maxval(NBZ(:)), NBZ(1))
         NBZ(:) = NBZ(1)
 
       end if
-      
+
       ! If we are using a path in reciprocal space 
-      ! we don't need to replicate the BZ in directions 
+      ! we do not need to replicate the BZ in directions 
       ! perpendicular to the path
-      if (kpoints_have_zero_weight_path(sb%kpoints)) then
-        call get_kpath_perp_direction(sb%kpoints, idim)
-        if (idim > 0 ) NBZ(idim) = 1
+      if (kpoints_have_zero_weight_path(sb%kpoints) .and. any(NBZ(:)> 1) ) then
+        call messages_write("Using a path in reciprocal space with PES_Flux_BZones > 1.")
+        call messages_new_line()
+        call messages_write("This may cause unphysical results if the path crosses the 1st BZ boundary.")
+        call messages_warning()
+!         call get_kpath_perp_direction(sb%kpoints, idim)
+!         if (idim > 0 ) NBZ(idim) = 1
       end if 
 
       ! This information is needed for postprocessing the data
@@ -756,19 +806,15 @@ contains
         if (.not. idim == pdim) call messages_write(" x ")        
       end do 
       call messages_info()
-      
-      
+            
       ! Total number of points
-      this%nkpnts = product(this%ll(1:mdim))
-      
-      
+      this%nkpnts = product(this%ll(1:mdim))*this%ngpt
       
       
 
     end if    
 
   
-    
     this%parallel_in_momentum = .false.
 
     ! Create the grid
@@ -782,44 +828,53 @@ contains
     
       ! we split the k-mesh in radial & angular part
       call pes_flux_distribute(1, this%nk, this%nk_start, this%nk_end, comm)
-      if ( (this%nk_end - this%nk_start + 1 ) < this%nk)  this%parallel_in_momentum = .true.
-      
+      if((this%nk_end - this%nk_start + 1) < this%nk) this%parallel_in_momentum = .true.
+      call pes_flux_distribute(1, this%nstepsomegak, this%nstepsomegak_start, this%nstepsomegak_end, comm)
+
+      if(debug%info) then
 #if defined(HAVE_MPI)
-      call MPI_Barrier(mpi_world%comm, mpi_err)
-      call MPI_Comm_rank(mpi_world%comm, mpirank, mpi_err)
-      write(*,*) &
-        'k-points on node ', mpirank, ' : ', this%nk_start, this%nk_end
-      call MPI_Barrier(mpi_world%comm, mpi_err)
+        call MPI_Barrier(mpi_world%comm, mpi_err)
+        write(*,*) &
+          'Debug: momentum points on node ', mpi_world%rank, ' : ', this%nk_start, this%nk_end
+        call MPI_Barrier(mpi_world%comm, mpi_err)
+        write(*,*) &
+          'Debug: momentum directions on node ', mpi_world%rank, ' : ', this%nstepsomegak_start, this%nstepsomegak_end
+        call MPI_Barrier(mpi_world%comm, mpi_err)
 #endif
+      end if
       SAFE_ALLOCATE(this%j_l(0:this%lmax, this%nk_start:this%nk_end))
       this%j_l = M_ZERO
 
       SAFE_ALLOCATE(this%kcoords_sph(1:3, this%nk_start:this%nk_end, 1:this%nstepsomegak))
       this%kcoords_sph = M_ZERO
 
-      SAFE_ALLOCATE(this%ylm_k(0:this%lmax, -this%lmax:this%lmax, 1:this%nstepsomegak))
+      SAFE_ALLOCATE(this%ylm_k(0:this%lmax, -this%lmax:this%lmax, this%nstepsomegak_start:this%nstepsomegak_end))
       this%ylm_k = M_z0
 
       ! spherical harmonics & kcoords_sph
-      if(this%nk_start > 0) then
-        iomk = 0
-        do ith = 0, this%nstepsthetak
-          thetak = ith * M_PI / this%nstepsthetak
-          do iph = 0, this%nstepsphik - 1
-            phik = iph * M_TWO * M_PI / this%nstepsphik
-            iomk = iomk + 1
+      iomk = 0
+      do ith = 0, this%nstepsthetak
+        thetak = ith * M_PI / this%nstepsthetak
+        do iph = 0, this%nstepsphik - 1
+          phik = iph * M_TWO * M_PI / this%nstepsphik
+          iomk = iomk + 1
+          if(iomk >= this%nstepsomegak_start .and. iomk <= this%nstepsomegak_end) then
             do ll = 0, this%lmax
               do mm = -ll, ll
                 call ylmr(cos(phik) * sin(thetak), sin(phik) * sin(thetak), cos(thetak), ll, mm, this%ylm_k(ll, mm, iomk))
               end do
             end do
+          end if
+          if(this%nk_start > 0) then
             this%kcoords_sph(1, this%nk_start:this%nk_end, iomk) = cos(phik) * sin(thetak)
             this%kcoords_sph(2, this%nk_start:this%nk_end, iomk) = sin(phik) * sin(thetak)
             this%kcoords_sph(3, this%nk_start:this%nk_end, iomk) = cos(thetak)
-            if(ith == 0 .or. ith == this%nstepsthetak) exit
-          end do
+          end if
+          if(ith == 0 .or. ith == this%nstepsthetak) exit
         end do
+      end do
 
+      if(this%nk_start > 0) then
         ! Bessel functions & kcoords_sph
         do ikk = this%nk_start, this%nk_end
           kact = ikk * this%dk
@@ -834,15 +889,17 @@ contains
     case (M_CUBIC)
       ! we do not split the k-mesh
       call pes_flux_distribute(1, this%nkpnts, this%nkpnts_start, this%nkpnts_end, comm)
-      if ( (this%nkpnts_end - this%nkpnts_start + 1 ) < this%nkpnts)  this%parallel_in_momentum = .true.
-      
+      if((this%nkpnts_end - this%nkpnts_start + 1) < this%nkpnts) this%parallel_in_momentum = .true.
+
+      if(debug%info) then
 #if defined(HAVE_MPI)
-      call MPI_Barrier(mpi_world%comm, mpi_err)
-      call MPI_Comm_rank(mpi_world%comm, mpirank, mpi_err)
-      write(*,*) &
-        'Number of k-points on node ', mpirank, ' : ', this%nkpnts_end - this%nkpnts_start + 1
-      call MPI_Barrier(mpi_world%comm, mpi_err)
+        call MPI_Barrier(mpi_world%comm, mpi_err)
+        write(*,*) &
+          'Debug: momentum points on node ', mpi_world%rank, ' : ', this%nkpnts_start, this%nkpnts_end
+        call MPI_Barrier(mpi_world%comm, mpi_err)
 #endif
+      end if
+
       SAFE_ALLOCATE(this%kcoords_cub(1:mdim, 1:this%nkpnts, kptst:kptend))
       this%kcoords_cub = M_ZERO
 
@@ -884,8 +941,8 @@ contains
   
 
       SAFE_ALLOCATE(this%kcoords_cub(1:mdim, 1:this%nkpnts, kptst:kptend))
-    
-      
+
+
       nkp_out = 0 
       do ikpt = kptst, kptend
         ikp = 0
@@ -895,24 +952,24 @@ contains
           select case (pdim)
             case (1)
             do ibz1 = -(NBZ(1)-1), (NBZ(1)-1) 
-
-              kvec(1) = ibz1 * sb%klattice(1, 1)                
-              call fill_non_periodic_dimension(this)
-      
+              do ig = 1, this%ngpt
+                kvec(1) = ibz1 * sb%klattice(1, 1) + gpoints(1,ig)               
+                call fill_non_periodic_dimension(this)
+              end do      
             end do
 
             case (2)
             
             do ibz2 = -(NBZ(2)-1), (NBZ(2)-1) 
               do ibz1 = -(NBZ(1)-1), (NBZ(1)-1) 
-  
-                kvec(1:2) = (/ibz1 * sb%klattice(1, 1), ibz2 * sb%klattice(2, 2)/)                
-                call fill_non_periodic_dimension(this)
-
+                do ig = 1, this%ngpt
+                  kvec(1:2) = ibz1 * sb%klattice(1:2, 1) + ibz2 * sb%klattice(1:2, 2) &
+                            + gpoints(1:2,ig) 
+                  call fill_non_periodic_dimension(this)
+                end do
               end do
             end do
-            
-            
+
           end select
 
       
@@ -937,14 +994,12 @@ contains
       call messages_write(this%nkpnts*kpoints_number(sb%kpoints))
       call messages_write("]")
       call messages_info()
+      
+      SAFE_DEALLOCATE_A(gpoints)
+      SAFE_DEALLOCATE_A(gpoints_reduced)
 
     end select
-
     
-    
-    
-    call messages_print_var_value(stdout, "Total number of momentum points", this%nkpnts)
-
     POP_SUB(pes_flux_reciprocal_mesh_gen)
     
   contains 
@@ -968,7 +1023,7 @@ contains
         if (val >= 0) then
           kvec(mdim) =  sign * sqrt(val)
         else  ! if E < p//^2/2
-          !FIXME: Should handle the exception setting doing something smarter than this
+          !FIXME: Should handle the exception doing something smarter than this
           kvec(mdim) = sqrt(val) ! set to NaN
 !           kvec(mdim) = M_HUGE ! set to infinity
           nkp_out = nkp_out + 1
@@ -1035,7 +1090,7 @@ contains
     PUSH_SUB(pes_flux_calc)
 
     if(iter > 0) then
-      
+
       if (debug%info) then
         call messages_write("Debug: Calculating pes_flux")
         call messages_info()
@@ -1195,17 +1250,17 @@ contains
 
     ! calculate Volkov phase using the previous time step
     conjgphase_cub(:, 0,:) = this%conjgphase_prev_cub(:,:)
-    
-    
+
     do ik = kptst, kptend
       
       kpoint(:) = M_ZERO
       if(simul_box_is_periodic(mesh%sb)) then
         kpoint(1:mdim) = kpoints_get_point(mesh%sb%kpoints, ik)
       end if
-            
+
       ! integrate over time
-      do itstep = 1, this%tdsteps
+      do itstep = 1, this%itstep
+        
         do ikp = ikp_start, ikp_end
           vec = sum((this%kcoords_cub(1:mdim, ikp, ik) - kpoint(1:mdim) - this%veca(1:mdim, itstep) / P_c)**2)
           conjgphase_cub(ikp, itstep, ik) = conjgphase_cub(ikp, itstep - 1, ik) & 
@@ -1216,7 +1271,8 @@ contains
 
     end do
 
-    this%conjgphase_prev_cub(:,:) = conjgphase_cub(:, this%tdsteps,:)
+    this%conjgphase_prev_cub(:,:) = conjgphase_cub(:, this%itstep,:)
+
 
     ! integrate over time & surface (on node)
     do isp = isp_start, isp_end
@@ -1234,7 +1290,7 @@ contains
           end if
           
 
-          if(.not. this%usememory) then            
+          if(.not. this%usememory) then
             k_dot_aux(:) = M_ZERO
             do imdim = 1, mdim
               k_dot_aux(:) = k_dot_aux(:) + this%kcoords_cub(imdim, :, ik) * this%rcoords(imdim, isp)
@@ -1244,9 +1300,9 @@ contains
 
           do ist = stst, stend
             do isdim = 1, sdim
-              
+
               ! integrate over time
-              do itstep = 1, this%tdsteps
+              do itstep = 1, this%itstep
                 Jk_cub(ist, isdim, ik, 1:this%nkpnts) = &
                   Jk_cub(ist, isdim, ik, 1:this%nkpnts) + conjgphase_cub(1:this%nkpnts, itstep, ik) * &
                   (this%wf(ist, isdim, ik, isp, itstep) * &
@@ -1262,7 +1318,7 @@ contains
                 Jk_cub(ist, isdim, ik, 1:this%nkpnts) = &
                   Jk_cub(ist, isdim, ik, 1:this%nkpnts) * conjgplanewf_cub(1:this%nkpnts, ik)
               end if
-              
+
             end do ! spin-dimension loop
           end do ! states loop
           
@@ -1313,7 +1369,7 @@ contains
     CMPLX, allocatable :: spctramp_sph(:,:,:,:,:)
     integer            :: ikk, ikk_start, ikk_end
     integer            :: isp_start, isp_end
-    integer            :: iomk
+    integer            :: iomk, iomk_start, iomk_end
     CMPLX, allocatable :: phase_act(:,:)
     FLOAT              :: vec
     integer            :: tdstep_on_node
@@ -1338,6 +1394,8 @@ contains
     ikk_end    = this%nk_end
     isp_start  = this%nsrfcpnts_start
     isp_end    = this%nsrfcpnts_end
+    iomk_start = this%nstepsomegak_start
+    iomk_end   = this%nstepsomegak_end
 
     ! surface integral S_lm (for time step on node)
     SAFE_ALLOCATE(s1_node(stst:stend, 1:sdim, kptst:kptend, 0:lmax, -lmax:lmax, 1:3))
@@ -1385,8 +1443,8 @@ contains
     end do
 
     ! spectral amplitude for k-points on node
-    SAFE_ALLOCATE(integ11_t(1:this%nstepsomegak, 1:3))
-    SAFE_ALLOCATE(integ21_t(1:this%nstepsomegak))
+    SAFE_ALLOCATE(integ11_t(0:this%nstepsomegak, 1:3))
+    SAFE_ALLOCATE(integ21_t(0:this%nstepsomegak))
     SAFE_ALLOCATE(integ12_t(ikk_start:ikk_end, 1:this%nstepsomegak, 1:3))
     SAFE_ALLOCATE(integ22_t(ikk_start:ikk_end, 1:this%nstepsomegak))
 
@@ -1438,12 +1496,18 @@ contains
               do mm = -ll, ll
                 ! multiply with spherical harmonics & sum over all mm
                 do imdim = 1, 3
-                  integ11_t(1:this%nstepsomegak, imdim) = integ11_t(1:this%nstepsomegak, imdim) + &
-                    s1_act(ll, mm, imdim) * this%ylm_k(ll, mm, 1:this%nstepsomegak)
+                  integ11_t(iomk_start:iomk_end, imdim) = integ11_t(iomk_start:iomk_end, imdim) + &
+                    s1_act(ll, mm, imdim) * this%ylm_k(ll, mm, iomk_start:iomk_end)
                 end do
-                integ21_t(1:this%nstepsomegak) = integ21_t(1:this%nstepsomegak) + &
-                  s2_act(ll, mm) * this%ylm_k(ll, mm, 1:this%nstepsomegak)
+                integ21_t(iomk_start:iomk_end) = integ21_t(iomk_start:iomk_end) + &
+                  s2_act(ll, mm) * this%ylm_k(ll, mm, iomk_start:iomk_end)
               end do
+
+              if(mesh%parallel_in_domains) then
+                call comm_allreduce(mesh%mpi_grp%comm, integ11_t)
+                call comm_allreduce(mesh%mpi_grp%comm, integ21_t)
+              end if
+
               ! multiply with Bessel function & sum over all ll
               do ikk = ikk_start, ikk_end
                 integ12_t(ikk, 1:this%nstepsomegak, 1:3) = integ12_t(ikk, 1:this%nstepsomegak, 1:3) + &
@@ -1497,37 +1561,56 @@ contains
   end subroutine pes_flux_integrate_sph
 
   ! ---------------------------------------------------------
-  subroutine pes_flux_getcube(this, mesh, border, offset)
+  subroutine pes_flux_getcube(this, mesh, hm, border, offset)
     type(mesh_t),     intent(in)    :: mesh
     type(pes_flux_t), intent(inout) :: this
+    type(hamiltonian_t), intent(in) :: hm
     FLOAT,            intent(in)    :: border(1:MAX_DIM)
     FLOAT,            intent(in)    :: offset(1:MAX_DIM)
 
     integer, allocatable  :: which_surface(:)
     FLOAT                 :: xx(MAX_DIM), dd
     integer               :: mdim, imdim, idir, isp
-    integer               :: ip_global, ip_start, ip_end
+    integer               :: ip_global
     integer               :: rankmin, nsurfaces
+    logical               :: in_ab
+    integer               :: ip_local
 
     PUSH_SUB(pes_flux_getcube)
 
     ! this routine is parallelized over the mesh in any case
 
     mdim = mesh%sb%dim
-
-    call pes_flux_distribute(1, mesh%np_global, ip_start, ip_end, mpi_world%comm)
+    in_ab = .false.
 
     SAFE_ALLOCATE(which_surface(1:mesh%np_global))
     which_surface = 0
 
     ! get the surface points
     this%nsrfcpnts = 0
-    do ip_global = ip_start, ip_end
+    do ip_local = 1, mesh%np
+      if(mesh%parallel_in_domains) then
+        ip_global = mesh%vp%local(mesh%vp%xlocal + ip_local - 1)
+      else
+        ip_global = ip_local
+      end if
+      
       nsurfaces = 0
-      xx(1:MAX_DIM) = mesh_x_global(mesh, ip_global) - offset(1:MAX_DIM)
+
+      xx(1:MAX_DIM) = mesh%x(ip_local, 1:MAX_DIM) - offset(1:MAX_DIM)
+
+      ! eventually check whether we are in absorbing zone
+      if(this%avoid_ab) then
+        select case(hm%bc%abtype)
+        case(MASK_ABSORBING)
+          in_ab = (hm%bc%mf(ip_local) /= M_ONE)
+        case(IMAGINARY_ABSORBING)
+          in_ab = (hm%bc%mf(ip_local) /= M_ZERO)
+        end select
+      end if
 
       ! check whether the point is inside the cube
-      if(all(abs(xx(1:mdim)) <= border(1:mdim))) then
+      if(all(abs(xx(1:mdim)) <= border(1:mdim)) .and. .not. in_ab) then
         ! check whether the point is close to any border
         do imdim = 1, mdim
           dd = border(imdim) - abs(xx(imdim))
@@ -1546,10 +1629,10 @@ contains
       end if
     end do
 
-#if defined(HAVE_MPI)
-    call comm_allreduce(mpi_world%comm, this%nsrfcpnts)
-    call comm_allreduce(mpi_world%comm, which_surface)
-#endif
+    if(mesh%parallel_in_domains) then
+      call comm_allreduce(mesh%mpi_grp%comm, this%nsrfcpnts)
+      call comm_allreduce(mesh%mpi_grp%comm, which_surface)
+    end if
 
     SAFE_ALLOCATE(this%srfcpnt(1:this%nsrfcpnts))
     SAFE_ALLOCATE(this%srfcnrml(1:mdim, 0:this%nsrfcpnts))
@@ -1636,7 +1719,7 @@ contains
         if(mdim == 3) this%srfcnrml(3, isp) = cos(thetar)
         this%rcoords(1:mdim, isp) = this%radius * this%srfcnrml(1:mdim, isp)
         ! here we also include the surface elements
-        this%srfcnrml(1:mdim, isp) = weight * this%srfcnrml(1:mdim, isp)
+        this%srfcnrml(1:mdim, isp) = this%radius**M_TWO * weight * this%srfcnrml(1:mdim, isp)
         if(ith == 0 .or. ith == nstepsthetar) exit
       end do
     end do

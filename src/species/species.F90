@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: species.F90 15203 2016-03-19 13:15:05Z xavier $
+!! $Id: species.F90 15403 2016-06-08 17:01:30Z micael $
 #include "global.h"
 
 module species_oct_m
@@ -586,7 +586,7 @@ contains
       ! allocate structure
       SAFE_ALLOCATE(spec%ps)
       if(spec%type == SPECIES_PSPIO) then
-        call ps_pspio_init(spec%ps, spec%Z, spec%lmax, spec%lloc, ispin, spec%filename)
+        call ps_pspio_init(spec%ps, spec%label, spec%Z, spec%lmax, spec%lloc, ispin, spec%filename)
       else
         call ps_init(spec%ps, spec%label, spec%Z, spec%lmax, spec%lloc, ispin, spec%filename)
       end if

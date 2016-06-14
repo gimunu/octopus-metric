@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: states_dim.F90 15203 2016-03-19 13:15:05Z xavier $
+!! $Id: states_dim.F90 15353 2016-05-11 10:00:54Z umberto $
 
 #include "global.h"
 
@@ -228,7 +228,7 @@ contains
       
       call io_mkdir('debug/')
       iunit = io_open('debug/kpoints', action = 'write')
-      call kpoints_write_info(sb%kpoints, iunit)      
+      call kpoints_write_info(sb%kpoints, iunit, absolute_coordinates = .true.)      
       call io_close(iunit)
 
       POP_SUB(states_choose_kpoints.print_kpoints_debug)

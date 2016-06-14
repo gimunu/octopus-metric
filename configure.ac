@@ -15,7 +15,7 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: configure.ac 15281 2016-04-16 16:09:57Z askhl $
+## $Id: configure.ac 15406 2016-06-09 11:29:44Z xavier $
 
 AC_PREREQ(2.59)
 # Note: the version string is written into ETSF_IO files, so when you update
@@ -306,6 +306,7 @@ fi
 dnl check for SCALAPACK/BLACS
 ACX_BLACS
 ACX_SCALAPACK
+ACX_ELPA
 
 dnl check for ARPACK and PARPACK
 ACX_ARPACK

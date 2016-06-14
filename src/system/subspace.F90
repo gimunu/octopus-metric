@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: subspace.F90 15203 2016-03-19 13:15:05Z xavier $
+!! $Id: subspace.F90 15406 2016-06-09 11:29:44Z xavier $
 
 #include "global.h"
 
@@ -30,6 +30,10 @@ module subspace_oct_m
 #endif
   use comm_oct_m
   use derivatives_oct_m
+#ifdef HAVE_ELPA
+  use elpa1
+  use elpa2
+#endif
   use global_oct_m
   use grid_oct_m
   use hamiltonian_oct_m
