@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: states_restart.F90 15385 2016-05-27 06:38:31Z nicolastd $
+!! $Id: states_restart.F90 15493 2016-07-18 21:01:02Z nicolastd $
 
 #include "global.h"
 
@@ -299,10 +299,16 @@ contains
                 err = 0
               end if
             else
-              if (states_are_real(st)) then
-                call drestart_write_mesh_function(restart, filename, gr%mesh, lr%ddl_psi(:, idim, ist, ik), err)
+              if(st%d%kpt%start <= ik .and. ik <= st%d%kpt%end) then
+                if (states_are_real(st)) then
+                  call drestart_write_mesh_function(restart, filename, gr%mesh, &
+                    lr%ddl_psi(:, idim, ist, ik), err)
+                else
+                  call zrestart_write_mesh_function(restart, filename, gr%mesh, &
+                    lr%zdl_psi(:, idim, ist, ik), err)      
+                end if
               else
-                call zrestart_write_mesh_function(restart, filename, gr%mesh, lr%zdl_psi(:, idim, ist, ik), err)
+                err = 0
               end if
             end if
             if (err /= 0) err2(2) = err2(2) + 1
@@ -717,7 +723,7 @@ contains
     end if
 #endif
 
-    if (.not. present(lr)) call states_fill_random(st, gr%mesh, filled, normalized = .false.)
+    if (.not. present(lr)) call fill_random()
     ! it is better to initialize lr wfns to zero
 
     SAFE_DEALLOCATE_A(filled)
@@ -749,6 +755,24 @@ contains
     POP_SUB(states_load)
 
   contains
+
+    ! ---------------------------------------------------------
+    subroutine fill_random() !< Put random function in orbitals that could not be read.
+      PUSH_SUB(states_load.fill_random)
+
+      do ik = st%d%kpt%start, st%d%kpt%end
+
+        do ist = st%st_start, st%st_end
+          do idim = 1, st%d%dim
+            if(filled(idim, ist, ik)) cycle
+
+            call states_generate_random(st, gr%mesh, ist, ist, ik, ik)
+          end do
+        end do
+      end do
+
+      POP_SUB(states_load.fill_random)
+    end subroutine fill_random
 
     ! ---------------------------------------------------------
 

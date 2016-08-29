@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: td.F90 15375 2016-05-21 12:10:13Z huebener $
+!! $Id: td.F90 15582 2016-08-14 10:27:12Z philipp $
 
 #include "global.h"
 
@@ -463,7 +463,7 @@ contains
 
       !Photoelectron stuff 
       if(td%pesv%calc_spm .or. td%pesv%calc_mask .or. td%pesv%calc_flux) &
-        call pes_calc(td%pesv, gr%mesh, st, td%dt, iter, td%max_iter, gr, hm)
+        call pes_calc(td%pesv, gr%mesh, st, td%dt, iter, gr, hm)
 
       call td_write_iter(write_handler, gr, st, hm, geo, hm%ep%kick, td%dt, sys%ks, iter)
 

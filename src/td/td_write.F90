@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: td_write.F90 15383 2016-05-26 17:05:33Z huebener $
+!! $Id: td_write.F90 15589 2016-08-22 14:39:43Z nicolastd $
 
 #include "global.h"
 
@@ -99,7 +99,8 @@ module td_write_oct_m
     OUT_PARTIAL_CHARGES = 18, &
     OUT_KP_PROJ     = 19, &
     OUT_FLOQUET     = 20, &
-    OUT_MAX         = 20
+    OUT_N_EX        = 21, &
+    OUT_MAX         = 21
   
   type td_write_t
     private
@@ -113,6 +114,7 @@ module td_write_oct_m
     integer        :: n_excited_states  !< number of excited states onto which the projections are calculated.
     type(excited_states_t), pointer :: excited_st(:) !< The excited states.
     type(partial_charges_t) :: partial_charges
+    integer :: compute_interval     !< Compute every compute_interval
   end type td_write_t
 
 contains
@@ -152,7 +154,7 @@ contains
     FLOAT,                    intent(in)    :: dt
 
     FLOAT :: rmin
-    integer :: ierr, first, ii, ist, jj, flags, iout, default
+    integer :: ierr, first, ii, ist, jj, kk, flags, iout, default
     type(block_t) :: blk
     character(len=100) :: filename
     type(restart_t) :: restart_gs
@@ -239,7 +241,7 @@ contains
     !% Output the total current.
     !%Option partial_charges 131072
     !% Bader and Hirshfeld partial charges. The output file is called 'td.general/partial_charges'.
-    !%Option td_kpoint_occup 262144                                                                              
+    !%Option td_kpoint_occup 262144                                                                     
     !% Project propagated Kohn-Sham states to the states at t=0 given in the directory 
     !% restart_proj (see %RestartOptions). This is an alternative to the option
     !% td_occup, with a formating more suitable for k-points and works only in 
@@ -248,7 +250,10 @@ contains
     !% Compute non-interacting Floquet bandstructure according to further options: 
     !% TDFloquetFrequency, TDFloquetSample, TDFloquetDimension.
     !% This is done only once per td-run at t=0.
-    !% works only in k- and/or state parallelization 
+    !% works only in k- and/or state parallelization
+    !%Option n_excited_el 1048576
+    !% Output the number of excited electrons, based on the projections 
+    !% of the time evolved wave-functions on the ground-state wave-functions. 
     !%End
 
     default = 2**(OUT_MULTIPOLES - 1) +  2**(OUT_ENERGY - 1)
@@ -274,6 +279,7 @@ contains
     if(writ%out(OUT_PARTIAL_CHARGES)%write) call messages_experimental('TDOutput = partial_charges')
     if(writ%out(OUT_KP_PROJ)%write) call messages_experimental('TDOutput = td_kpoint_occup')
     if(writ%out(OUT_FLOQUET)%write) call messages_experimental('TDOutput = td_floquet')
+    if(writ%out(OUT_N_EX)%write) call messages_experimental('TDOutput = n_excited_el')
 
     if(writ%out(OUT_KP_PROJ)%write.or.writ%out(OUT_FLOQUET)%write) then
       ! make sure this is not domain distributed
@@ -311,16 +317,22 @@ contains
     ! This variable is documented in scf/scf.F90
     call parse_variable('LocalMagneticMomentsSphereRadius', rmin*M_HALF, writ%lmm_r, units_inp%length)
 
-    if(writ%out(OUT_PROJ)%write .or. writ%out(OUT_POPULATIONS)%write.or.writ%out(OUT_KP_PROJ)%write) then
-      if (.not.writ%out(OUT_KP_PROJ)%write.and.(st%parallel_in_states.or.st%d%kpt%parallel)) then
+    if(writ%out(OUT_PROJ)%write .or. writ%out(OUT_POPULATIONS)%write &
+      .or.writ%out(OUT_KP_PROJ)%write .or. writ%out(OUT_N_EX)%write) then
+      if (.not.writ%out(OUT_KP_PROJ)%write.and. &
+          .not.writ%out(OUT_N_EX)%write.and. &
+          (st%parallel_in_states.or.st%d%kpt%parallel)) then
         message(1) = "Options TDOutput = td_occup and populations are not implemented for parallel in states."
         call messages_fatal(1)
       end if
+
+      if (writ%out(OUT_N_EX)%write.and. st%d%kpt%parallel) then
+        message(1) = "Options TDOutput = n_excited_el is not implemented for parallel in states."
+        call messages_fatal(1)
+      end if
       
-      if(.not.writ%out(OUT_KP_PROJ)%write) then
+      if(.not.writ%out(OUT_KP_PROJ)%write.and..not.writ%out(OUT_N_EX)%write) then
          call states_copy(writ%gs_st, st, exclude_wfns = .true., exclude_eigenval = .true.)
-         ! clean up all the stuff we have to reallocate
-         SAFE_DEALLOCATE_P(writ%gs_st%node)
       else
          ! we want the same layout of gs_st as st
          call states_copy(writ%gs_st, st)
@@ -329,16 +341,17 @@ contains
       ! clean up all the stuff we have to reallocate
       SAFE_DEALLOCATE_P(writ%gs_st%node)
 
-      call restart_init(restart_gs, RESTART_PROJ, RESTART_TYPE_LOAD,writ%gs_st%dom_st_kpt_mpi_grp, ierr, mesh=gr%mesh)
+      call restart_init(restart_gs, RESTART_PROJ, RESTART_TYPE_LOAD, writ%gs_st%dom_st_kpt_mpi_grp, ierr, mesh=gr%mesh)
 
-      if(.not.writ%out(OUT_KP_PROJ)%write) then
+      if(.not.writ%out(OUT_KP_PROJ)%write.and..not.writ%out(OUT_N_EX)%write) then
         if(ierr == 0) &
-          call states_look(restart_gs, ii, jj, writ%gs_st%nst, ierr)
+          call states_look(restart_gs, ii, jj, kk, ierr)
+          writ%gs_st%nst = min(writ%gs_st%nst, kk)
         if(ierr /= 0) then
           message(1) = "Unable to read states information."
           call messages_fatal(1)
         end if
-        
+ 
         ! do this only when not calculating populations, since all states are needed then
         if(.not. writ%out(OUT_POPULATIONS)%write) then
           ! We will store the ground-state Kohn-Sham system for all processors.
@@ -356,9 +369,9 @@ contains
           !%End
           call parse_variable('TDProjStateStart', 1, writ%gs_st%st_start)
         else
-          writ%gs_st%st_start = 1
+           writ%gs_st%st_start = 1
         end if
-        
+       
         ! allocate memory
         SAFE_ALLOCATE(writ%gs_st%occ(1:writ%gs_st%nst, 1:writ%gs_st%d%nik))
         SAFE_ALLOCATE(writ%gs_st%zeigenval%Re(1:writ%gs_st%nst, 1:writ%gs_st%d%nik))
@@ -375,17 +388,16 @@ contains
         
         call states_allocate_wfns(writ%gs_st, gr%mesh, TYPE_CMPLX)
       end if
-      
+ 
       call states_load(restart_gs, writ%gs_st, gr, ierr, label = ': gs for TDOutput')
 
       if(ierr /= 0 .and. ierr /= (writ%gs_st%st_end-writ%gs_st%st_start+1)*writ%gs_st%d%nik*writ%gs_st%d%dim) then
         message(1) = "Unable to read wavefunctions for TDOutput."
         call messages_fatal(1)
       end if
-
       call restart_end(restart_gs)
     end if
-
+ 
     ! Build the excited states...
     if(writ%out(OUT_POPULATIONS)%write) then
       !%Variable TDExcitedStatesToProject
@@ -437,6 +449,23 @@ contains
         nullify(writ%excited_st)
       end if
     end if
+
+    !%Variable TDOutputComputeInterval
+    !%Type integer
+    !%Default 50
+    !%Section Time-Dependent::TD Output
+    !%Description
+    !% The TD output requested are computed
+    !% when the iteration number is a multiple of the <tt>TDOutputComputeInterval</tt> variable.
+    !% Must be >= 0. If it is 0, then no output is written. 
+    !% Implemented only for projections and number of excited electrons for the moment.
+    !%End
+    call parse_variable('TDOutputComputeInterval', 50, writ%compute_interval)
+    if(writ%compute_interval < 0) then
+      message(1) = "TDOutputComputeInterval must be >= 0."
+      call messages_fatal(1)
+    end if
+
 
     if (iter == 0) then
       first = 0
@@ -547,6 +576,10 @@ contains
         call write_iter_init(writ%out(OUT_PARTIAL_CHARGES)%handle, first, &
           units_from_atomic(units_out%time, dt), trim(io_workpath("td.general/partial_charges")))
       end if
+
+     if(writ%out(OUT_N_EX)%write) &
+        call write_iter_init(writ%out(OUT_N_EX)%handle, first, &
+          units_from_atomic(units_out%time, dt), trim(io_workpath("td.general/n_ex")))
       
     end if
     
@@ -585,7 +618,8 @@ contains
       writ%n_excited_states = 0
     end if
 
-    if(writ%out(OUT_PROJ)%write.or.writ%out(OUT_POPULATIONS)%write) then
+    if(writ%out(OUT_PROJ)%write.or.writ%out(OUT_POPULATIONS)%write &
+       .or. writ%out(OUT_N_EX)%write) then
       call states_end(writ%gs_st)
     end if
 
@@ -628,8 +662,10 @@ contains
     if(writ%out(OUT_MAGNETS)%write) &
       call td_write_local_magnetic_moments(writ%out(OUT_MAGNETS)%handle, gr, st, geo, writ%lmm_r, iter)
 
-    if(writ%out(OUT_PROJ)%write) &
+    if(writ%out(OUT_PROJ)%write .and. mod(iter, writ%compute_interval) == 0) then
+      if (mpi_grp_is_root(mpi_world)) call write_iter_set(writ%out(OUT_PROJ)%handle, iter)
       call td_write_proj(writ%out(OUT_PROJ)%handle, gr, geo, st, writ%gs_st, kick, iter)
+    end if
 
     if(writ%out(OUT_FLOQUET)%write) &
       call td_write_floquet(writ%out(OUT_FLOQUET)%handle,hm, gr, st, ks, iter)
@@ -673,6 +709,11 @@ contains
 
     if(writ%out(OUT_PARTIAL_CHARGES)%write) &
       call td_write_partial_charges(writ%out(OUT_PARTIAL_CHARGES)%handle, writ%partial_charges, gr%fine%mesh, st, geo, iter)
+
+    if(writ%out(OUT_N_EX)%write .and. mod(iter, writ%compute_interval) == 0) then
+      if (mpi_grp_is_root(mpi_world))  call write_iter_set(writ%out(OUT_N_EX)%handle, iter)
+      call td_write_n_ex(writ%out(OUT_N_EX)%handle, gr, st, writ%gs_st, iter)
+    end if
 
     call profiling_out(prof)
     POP_SUB(td_write_iter)
@@ -1378,7 +1419,6 @@ contains
   end subroutine td_write_populations
 
 
-
   ! ---------------------------------------------------------
   subroutine td_write_acc(out_acc, gr, geo, st, hm, dt, iter)
     type(c_ptr),         intent(inout) :: out_acc
@@ -2017,7 +2057,7 @@ contains
 
       end if
 
-      SAFE_ALLOCATE(projections(gs_st%st_start:st%nst, gs_st%st_start:gs_st%st_end, 1:st%d%nik))
+      SAFE_ALLOCATE(projections(1:st%nst, gs_st%st_start:gs_st%st_end, 1:st%d%nik))
       do idir = 1, geo%space%dim
         projections = M_Z0
 
@@ -2028,7 +2068,7 @@ contains
           call write_iter_string(out_proj, "# ------")
           call write_iter_header(out_proj, aux)
           do ik = 1, st%d%nik
-            do ist = max(gs_st%st_start, st%st_start), st%nst
+            do ist = gs_st%st_start, st%st_end
               do uist = gs_st%st_start, gs_st%st_end
                 call write_iter_double(out_proj,  real(projections(ist, uist, ik)), 1)
                 call write_iter_double(out_proj, aimag(projections(ist, uist, ik)), 1)
@@ -2050,9 +2090,9 @@ contains
     ! this is required if st%X(psi) is used
     call states_sync(st)
 
-    SAFE_ALLOCATE(projections(gs_st%st_start:st%nst, gs_st%st_start:gs_st%st_end, 1:st%d%nik))
+    SAFE_ALLOCATE(projections(1:st%nst, gs_st%st_start:gs_st%st_end, 1:st%d%nik))
     projections(:,:,:) = M_Z0
-    call calc_projections()
+    call calc_projections(gr, st, gs_st, projections)
 
     if(mpi_grp_is_root(mpi_world)) then
       call write_iter_start(out_proj)
@@ -2071,40 +2111,6 @@ contains
     POP_SUB(td_write_proj)
 
   contains
-    ! ---------------------------------------------------------
-    !> This subroutine calculates:
-    !! \f[
-    !! p(uist, ist, ik) = < \phi_0(uist, k) | \phi(ist, ik) (t) >
-    !! \f]
-    ! ---------------------------------------------------------
-    subroutine calc_projections()
-      integer :: uist, ist, ik
-      CMPLX, allocatable :: psi(:, :), gspsi(:, :)      
-      
-      PUSH_SUB(td_write_proj.calc_projections)
-
-      SAFE_ALLOCATE(psi(1:gr%mesh%np, 1:st%d%dim))
-      SAFE_ALLOCATE(gspsi(1:gr%mesh%np, 1:st%d%dim))
-      
-      do ik = 1, st%d%nik
-        do ist = max(gs_st%st_start, st%st_start), st%st_end
-          call states_get_state(st, gr%mesh, ist, ik, psi)
-          do uist = gs_st%st_start, gs_st%st_end
-            call states_get_state(gs_st, gr%mesh, uist, ik, gspsi)
-            projections(ist, uist, ik) = zmf_dotp(gr%mesh, st%d%dim, psi, gspsi)
-          end do
-        end do
-      end do
-
-      SAFE_DEALLOCATE_A(psi)
-      SAFE_DEALLOCATE_A(gspsi)
-      
-      call distribute_projections()
-
-      POP_SUB(td_write_proj.calc_projections)
-    end subroutine calc_projections
-
-
     ! ---------------------------------------------------------
     subroutine dipole_matrix_elements(dir)
       integer, intent(in) :: dir
@@ -2125,7 +2131,7 @@ contains
       SAFE_ALLOCATE(xpsi(1:gr%mesh%np, 1:st%d%dim))
       
       do ik = 1, st%d%nik
-        do ist = max(gs_st%st_start, st%st_start), st%st_end
+        do ist = gs_st%st_start, st%nst
           call states_get_state(st, gr%mesh, ist, ik, psi)
           do uist = gs_st%st_start, gs_st%st_end
             call states_get_state(gs_st, gr%mesh, ist, ik, gspsi)
@@ -2141,35 +2147,181 @@ contains
       
       SAFE_DEALLOCATE_A(xpsi)
 
-      call distribute_projections()
+      call distribute_projections(st, gs_st, projections)
 
       POP_SUB(td_write_proj.dipole_matrix_elements)
     end subroutine dipole_matrix_elements
 
-    ! ------------------------------------------------
+  end subroutine td_write_proj
 
-    subroutine distribute_projections
+  ! ---------------------------------------------------------
+  !> This routine computes the total number of excited electrons
+  !> based on projections on the GS orbitals
+  !> The procedure is very similar to the td_write_proj
+  ! ---------------------------------------------------------
+  subroutine td_write_n_ex(out_nex, gr, st, gs_st, iter)
+    implicit none
+ 
+    type(c_ptr),       intent(inout) :: out_nex
+    type(grid_t),      intent(in)    :: gr
+    type(states_t),    intent(inout) :: st
+    type(states_t),    intent(in)    :: gs_st
+    integer,           intent(in)    :: iter
+
+    CMPLX, allocatable :: projections(:,:)
+    FLOAT, allocatable :: occ(:,:)
+    character(len=80) :: aux
+    integer :: ik, ist, uist, idir
+    FLOAT :: Nex
+
+
+    PUSH_SUB(td_write_n_ex)
+
+    if(iter == 0) then
+      if(mpi_grp_is_root(mpi_world)) then
+        call td_write_print_header_init(out_nex)
+
+        write(aux, '(a15,i2)')      '# nspin        ', st%d%nspin
+        call write_iter_string(out_nex, aux)
+        call write_iter_nl(out_nex)
+
+        call write_iter_string(out_nex, "#%")
+        call write_iter_nl(out_nex)
+
+        write(aux, '(a,i8)') "# nik  ", st%d%nik
+        call write_iter_string(out_nex, aux)
+        call write_iter_nl(out_nex)
+
+        write(aux, '(a,2i8)') "#  st  ", gs_st%st_start, st%nst
+        call write_iter_string(out_nex, aux)
+        call write_iter_nl(out_nex)
+
+        write(aux, '(a,2i8)') "# ust  ", gs_st%st_start, gs_st%st_end
+        call write_iter_string(out_nex, aux)
+        call write_iter_nl(out_nex)
+
+        call write_iter_header_start(out_nex)
+        call write_iter_header(out_nex, '#  iter t Nex(t)')
+        call write_iter_nl(out_nex)
+
+      end if
+
+      if(mpi_grp_is_root(mpi_world)) then
+        call td_write_print_header_end(out_nex)
+      end if
+
+    end if
+
+    ! this is required if st%X(psi) is used
+    call states_sync(st)
+
+    SAFE_ALLOCATE(projections(1:gs_st%nst, 1:st%nst))
+     
+    !We need to distribute the occupations
+    SAFE_ALLOCATE(occ(1:st%nst, 1:st%d%nik))
+    occ(1:st%nst, 1:st%d%nik) = CNST(0.0)
+    occ(st%st_start:st%st_end,st%d%kpt%start:st%d%kpt%end) = st%occ(st%st_start:st%st_end,st%d%kpt%start:st%d%kpt%end)
+    if(st%parallel_in_states .or. st%d%kpt%parallel) then
+      call comm_allreduce(st%st_kpt_mpi_grp%comm, occ, dim = (/st%nst, st%d%nik/))
+    end if 
+ 
+    Nex = M_ZERO 
+    do ik = 1, st%d%nik
+      call zstates_calc_projections(gr%mesh, st, gs_st, ik, projections)
+      do ist = 1, gs_st%nst
+        do uist = 1, st%nst
+          Nex = Nex - st%d%kweights(ik) * occ(ist, ik) * occ(uist, ik) / st%smear%el_per_state &
+                     * abs(projections(ist, uist))**2
+        end do
+      end do
+    end do
+
+#if defined(HAVE_MPI)        
+   if(st%d%kpt%parallel) then
+     call comm_allreduce(st%st_kpt_mpi_grp%comm, Nex)
+   end if
+#endif  
+
+  Nex = Nex + st%qtot 
+
+  if(mpi_grp_is_root(mpi_world)) then
+    call write_iter_start(out_nex)
+    call write_iter_double(out_nex, Nex, 1)
+    call write_iter_nl(out_nex)
+  end if
+  
+  SAFE_DEALLOCATE_A(projections)
+  SAFE_DEALLOCATE_A(occ)
+
+  POP_SUB(td_write_n_ex)
+ end subroutine td_write_n_ex
+
+   ! ---------------------------------------------------------
+   !> This subroutine calculates:
+   !! \f[
+   !! p(uist, ist, ik) = < \phi_0(uist, k) | \phi(ist, ik) (t) >
+   !! \f]
+   ! ---------------------------------------------------------
+   subroutine calc_projections(gr, st, gs_st, projections)
+     implicit none 
+    
+     type(grid_t),      intent(in)    :: gr
+     type(states_t),    intent(inout) :: st
+     type(states_t),    intent(in)    :: gs_st
+     CMPLX, intent(inout) :: projections(1:st%nst, &
+                                         gs_st%st_start:gs_st%nst, 1:st%d%nik)
+ 
+     integer :: uist, ist, ik
+     CMPLX, allocatable :: psi(:, :), gspsi(:, :)
+     PUSH_SUB(calc_projections)
+    
+     SAFE_ALLOCATE(psi(1:gr%mesh%np, 1:st%d%dim))
+     SAFE_ALLOCATE(gspsi(1:gr%mesh%np, 1:st%d%dim))
+     
+     do ik = 1, st%d%nik
+       do ist = st%st_start, st%st_end
+         call states_get_state(st, gr%mesh, ist, ik, psi)
+         do uist = gs_st%st_start, gs_st%nst
+           call states_get_state(gs_st, gr%mesh, uist, ik, gspsi)
+           projections(ist, uist, ik) = zmf_dotp(gr%mesh, st%d%dim, psi, gspsi)
+        end do
+      end do
+    end do
+    SAFE_DEALLOCATE_A(psi)
+    SAFE_DEALLOCATE_A(gspsi)
+    call distribute_projections(st, gs_st, projections)
+    POP_SUB(calc_projections)
+  end subroutine calc_projections
+
+   ! ------------------------------------------------
+    subroutine distribute_projections(st, gs_st, projections)
+      implicit none
+      
+      type(states_t),    intent(in) :: st
+      type(states_t),    intent(in) :: gs_st
+      CMPLX, intent(inout) :: projections(1:st%nst, &
+                                          gs_st%st_start:gs_st%nst, 1:st%d%nik)
+
 #if defined(HAVE_MPI)
       integer :: k, ik, ist, uist
 
       if(.not.st%parallel_in_states) return
 
-      PUSH_SUB(td_write_proj.distribute_projections)
-
+      PUSH_SUB(distribute_projections)
+      
       do ik = 1, st%d%nik
-        do ist = gs_st%st_start, st%nst
+        do ist = st%st_start, st%st_end
           k = st%node(ist)
-          do uist = gs_st%st_start, gs_st%st_end
+          do uist = gs_st%st_start, gs_st%nst
             call MPI_Bcast(projections(ist, uist, ik), 1, MPI_CMPLX, k, st%mpi_grp%comm, mpi_err)
           end do
         end do
       end do
 
-      POP_SUB(td_write_proj.distribute_projections)
+      POP_SUB(distribute_projections)
 #endif
     end subroutine distribute_projections
 
-  end subroutine td_write_proj
 
   subroutine td_write_proj_kp(out_proj_kp, hm,gr, st, gs_st, iter)
     type(c_ptr),       intent(inout) :: out_proj_kp

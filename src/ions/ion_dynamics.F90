@@ -15,7 +15,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: ion_dynamics.F90 15203 2016-03-19 13:15:05Z xavier $
+!! $Id: ion_dynamics.F90 15425 2016-06-17 10:05:17Z umberto $
 
 #include "global.h"
 
@@ -181,7 +181,6 @@ contains
       
       do i = 1, ndisp
         call parse_block_integer(blk, i-1, 0, iatom)
-        print *, "iatom ",iatom
         this%td_displacements(iatom)%move = .true.
         
         call parse_block_string(blk, i-1, 1, expression)
@@ -208,7 +207,6 @@ contains
         
       end do
     end if
-    print *, tdf(this%td_displacements(1)%fx,M_ONE)
     
     
 
@@ -237,7 +235,8 @@ contains
       have_velocities = .true.
 
       if(this%drive_ions) then
-        call messages_write('You cannot use a Thermostat and IonsConstantVelocity or IonsTimeDependentDisplacements at the same time.')
+        call messages_write('You cannot use a Thermostat and IonsConstantVelocity or IonsTimeDependentDisplacements')
+        call messages_write('at the same time.')
         call messages_fatal()
       end if
 
@@ -518,7 +517,8 @@ contains
           
         else
           if(this%constant_velocity) then
-            geo%atom(iatom)%x(1:geo%space%dim) = geo%atom(iatom)%x(1:geo%space%dim) + dt*geo%atom(iatom)%v(1:geo%space%dim)
+            geo%atom(iatom)%x(1:geo%space%dim) = geo%atom(iatom)%x(1:geo%space%dim) &
+                                                + dt*geo%atom(iatom)%v(1:geo%space%dim)
           end if
 
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 mode: shell-script -*-
-# $Id: 14-silicon_doubleshift.test 15370 2016-05-18 10:43:13Z nicolastd $
+# $Id: 14-silicon_doubleshift.test 15588 2016-08-20 10:58:12Z nicolastd $
 
 Test       : Silicon crystal with two k-point shifts
 Program    : octopus
@@ -75,4 +75,13 @@ match ; DOS energy 2   ; LINEFIELD(static/total-dos.dat,   2, 1);       -0.40771
 match ; DOS value  2   ; LINEFIELD(static/total-dos.dat,   2, 2);        0.458235
 match ; DOS energy 442 ; LINEFIELD(static/total-dos.dat, 442, 1);        0.255386
 match ; DOS value  442 ; LINEFIELD(static/total-dos.dat, 442, 2);        1.878176
+
+
+#Checking some TD quantities
+Input      : 14-silicon_doubleshift.02-td.inp
+
+Precision : 1e-6
+
+match ; Total current [step  100] ; LINEFIELD(td.general/total_current, -1, 5) ; -4.535906553239e-02
+match ; Number of excited electrons [step  100] ; LINEFIELD(td.general/n_ex, -1, 3) ; 1.027640665754e-04
 

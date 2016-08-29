@@ -15,7 +15,7 @@
 ## Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 ## 02110-1301, USA.
 ##
-## $Id: common-rules.make 15406 2016-06-09 11:29:44Z xavier $
+## $Id: common-rules.make 15552 2016-07-31 05:54:17Z xavier $
 
 # ---------------------------------------------------------------
 # Include paths.
@@ -45,7 +45,7 @@ AM_CPPFLAGS = \
         -I$(top_srcdir)/external_libs/spglib-1.5.2/src \
 	-I$(top_srcdir)/liboct_parser \
         $(GSL_CFLAGS) $(GD_CFLAGS) \
-	@METIS_CFLAGS@ @PARMETIS_CFLAGS@ \
+	@METIS_CFLAGS@ @PARMETIS_CFLAGS@ @CFLAGS_NFFT@ @CFLAGS_FFTW@ @CFLAGS_CUDA@ \
 	-DSHARE_OCTOPUS='"$(pkgdatadir)"'
 
 AM_CCASFLAGS = \
@@ -85,7 +85,7 @@ external_LIBS = \
 	$(top_builddir)/external_libs/yaml-0.1.4/src/libyaml.a
 # we should not have libyaml here if we used an external one...
 
-FCFLAGS_MODS += @FCFLAGS_LIBXC@ @FCFLAGS_PSPIO@ @FCFLAGS_ISF@ @FCFLAGS_FFTW@ @FCFLAGS_PFFT@ @FCFLAGS_PNFFT@ @FCFLAGS_NETCDF@ @FCFLAGS_ETSF_IO@ @FCFLAGS_BERKELEYGW@ @FCFLAGS_NLOPT@ @FCFLAGS_LIBFM@ @FCFLAGS_ELPA@
+FCFLAGS_MODS += @FCFLAGS_LIBXC@ @FCFLAGS_PSPIO@ @FCFLAGS_ISF@ @FCFLAGS_FFTW@ @FCFLAGS_PFFT@ @FCFLAGS_PNFFT@ @FCFLAGS_NETCDF@ @FCFLAGS_ETSF_IO@ @FCFLAGS_BERKELEYGW@ @FCFLAGS_NLOPT@ @FCFLAGS_LIBFM@ @FCFLAGS_ELPA@ @FCFLAGS_POKE@
 
 if COMPILE_OPENCL
   external_LIBS += $(top_builddir)/external_libs/fortrancl/libfortrancl.a @LIBS_CLBLAS@ @LIBS_CLFFT@ @CL_LIBS@
@@ -100,10 +100,10 @@ endif
 
 # These must be arranged so if LIB1 depends on LIB2, LIB1 must occur before LIB2.
 # e.g. ETSF_IO depends on netCDF, ISF depends on LAPACK
-outside_LIBS = @LIBS_PSPIO@ @LIBS_ISF@ @LIBS_NFFT@ @LIBS_PNFFT@ @LIBS_PFFT@ \
+outside_LIBS = @LIBS_PSPIO@ @LIBS_POKE@ @LIBS_ISF@ @LIBS_NFFT@ @LIBS_PNFFT@ @LIBS_PFFT@ \
   @LIBS_SPARSKIT@ @LIBS_ETSF_IO@ @LIBS_NETCDF@ @LIBS_LIBFM@ \
   @LIBS_BERKELEYGW@ @LIBS_NLOPT@ @LIBS_PARPACK@ @LIBS_ARPACK@ @GD_LIBS@ \
-  @LIBS_PARMETIS@ @LIBS_METIS@ @LIBS_FEAST@ @LIBS_MPI@
+  @LIBS_PARMETIS@ @LIBS_METIS@ @LIBS_FEAST@ @LIBS_CUDA@ @LIBS_MPI@
 
 other_LIBS = $(external_LIBS) $(scalapack_LIBS) $(outside_LIBS) $(core_LIBS) @CXXLIBS@
 all_LIBS = $(octopus_LIBS) $(other_LIBS)

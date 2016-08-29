@@ -16,7 +16,7 @@
 !! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 !! 02110-1301, USA.
 !!
-!! $Id: simul_box.F90 15378 2016-05-21 15:07:41Z huebener $
+!! $Id: simul_box.F90 15528 2016-07-27 14:36:31Z nicolastd $
 
 #include "global.h"
 
@@ -113,6 +113,7 @@ module simul_box_oct_m
     FLOAT :: volume_element                      !< the volume element in real space
     FLOAT :: rcell_volume                        !< the volume of the cell in real space
     FLOAT :: metric            (MAX_DIM,MAX_DIM) !< metric tensor F matrix following Chelikowski paper PRB 78 075109 (2008)
+    FLOAT :: stress_tensor(MAX_DIM,MAX_DIM)   !< reciprocal-lattice primitive vectors
     logical :: nonorthogonal
     
     type(kpoints_t) :: kpoints                   !< the k-points
@@ -662,7 +663,7 @@ contains
       !%Section Mesh::Simulation Box
       !%Description
       !% (Experimental) Primitive lattice vectors. Vectors are stored in rows.
-      !% Note that these vectors will be normalized. Default:
+      !% Default:
       !% <br><br><tt>%LatticeVectors
       !% <br>&nbsp;&nbsp;1.0 | 0.0 | 0.0
       !% <br>&nbsp;&nbsp;0.0 | 1.0 | 0.0
